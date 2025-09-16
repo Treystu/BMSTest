@@ -62,8 +62,11 @@ const mergeGroup = (group: DataPoint[]): DataPoint => {
     const mergedPoint: DataPoint = { timestamp: 0 };
     const valueCounts: { [key: string]: number } = {};
 
+    // Use the first point's timestamp as the reference for the merged group
+    mergedPoint.timestamp = group[0].timestamp;
+
     for (const point of group) {
-        mergedPoint.timestamp += point.timestamp;
+        // mergedPoint.timestamp += point.timestamp; // We don't average timestamp anymore
         for (const key in point) {
             if (key !== 'timestamp') {
                 const value = point[key];
@@ -75,7 +78,7 @@ const mergeGroup = (group: DataPoint[]): DataPoint => {
         }
     }
 
-    mergedPoint.timestamp /= totalPoints;
+    // mergedPoint.timestamp /= totalPoints;
 
     for (const key in valueCounts) {
         mergedPoint[key] /= valueCounts[key];
@@ -83,6 +86,18 @@ const mergeGroup = (group: DataPoint[]): DataPoint => {
 
     return mergedPoint;
 };
+
+const sanitizeMetricKey = (key: string): string => {
+    const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/gi, '');
+    if (lowerKey.includes('soc')) return 'soc';
+    if (lowerKey.includes('volt')) return 'voltage';
+    if (lowerKey.includes('curr')) return 'current';
+    if (lowerKey.includes('cap')) return 'capacity';
+    if (lowerKey.includes('temp')) return 'temperature';
+    // Return a cleaned-up version of the original key if no standard match
+    return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/_+/g, '_');
+};
+
 
 export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<Record<string, BatteryData>>({});
@@ -95,10 +110,15 @@ export default function Home() {
   const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
 
   useEffect(() => {
-    if (!activeBatteryId && batteryIds.length > 0) {
+    // This effect ensures that if the active battery is removed,
+    // we select a new one. It also selects the first battery
+    // when data first loads.
+    if (activeBatteryId && !dataByBattery[activeBatteryId]) {
+      setActiveBatteryId(batteryIds.length > 0 ? batteryIds[0] : null);
+    } else if (!activeBatteryId && batteryIds.length > 0) {
       setActiveBatteryId(batteryIds[0]);
     }
-  }, [batteryIds, activeBatteryId]);
+  }, [dataByBattery, batteryIds, activeBatteryId]);
 
   const updateChartInfo = useCallback(async (batteryId: string, history: DataPoint[]) => {
       const fullHistory = history;
@@ -171,8 +191,7 @@ export default function Home() {
                     } else {
                         const value = parseFloat(obj[key]);
                         if(!isNaN(value)) {
-                            // Sanitize key: lowercase and remove special characters
-                            const sanitizedKey = newKey.toLowerCase().replace(/[^a-z0-9]/gi, '');
+                            const sanitizedKey = sanitizeMetricKey(newKey);
                             dataPoint[sanitizedKey] = value;
                         }
                     }
@@ -181,7 +200,7 @@ export default function Home() {
             processObject(parsedData);
             entry.newPoints.push(dataPoint);
         } catch (e: any) {
-            console.error(`Failed to parse data for battery ${batteryId}`, e);
+            console.error(`Failed to parse data for battery ${batteryId}`, e.message, `Raw data: "${extractedData}"`);
             toast({
                 title: 'Data Parsing Error',
                 description: `Could not parse data for battery ${batteryId}. Error: ${e.message}`,
@@ -190,10 +209,11 @@ export default function Home() {
         }
     }
 
+    let firstNewBatteryId: string | null = null;
+    const updatedBatteryIds: string[] = [];
+
     setDataByBattery(prev => {
         const updatedData = { ...prev };
-        let firstNewBatteryId: string | null = null;
-        const updatedBatteryIds: string[] = [];
 
         newDataByBattery.forEach((value, key) => {
             updatedBatteryIds.push(key);
@@ -218,27 +238,41 @@ export default function Home() {
         
         console.log("Updated dataByBattery state:", updatedData);
         
-        // This needs to be outside the main state update to avoid the render error.
-        // We'll use a `useEffect` to handle this logic.
-        if (firstNewBatteryId && !activeBatteryId) {
-            setActiveBatteryId(firstNewBatteryId);
-        }
-
-        // Trigger chart info updates after state has settled
-        updatedBatteryIds.forEach(id => {
-            updateChartInfo(id, updatedData[id].history);
-        });
-        
         return updatedData;
     });
 
-  }, [activeBatteryId, toast, updateChartInfo]);
+    // Handle selection of a new battery and trigger chart updates
+    // outside of the main state update to avoid render errors.
+    setTimeout(() => {
+        if (firstNewBatteryId) {
+            setActiveBatteryId(firstNewBatteryId);
+        }
+        updatedBatteryIds.forEach(id => {
+            setDataByBattery(currentData => {
+                if (currentData[id]) {
+                    updateChartInfo(id, currentData[id].history);
+                }
+                return currentData;
+            });
+        });
+    }, 0);
+
+
+  }, [toast, updateChartInfo]);
   
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
   const chartInfo = activeBatteryData?.chartInfo || null;
 
-  const latestDataPoint = dataHistory.length > 0 ? dataHistory[dataHistory.length - 1] : null;
+  const latestDataPoint = useMemo(() => {
+    if (dataHistory.length > 0) {
+      // Find the item with the most recent timestamp
+      return dataHistory.reduce((latest, current) => {
+        return current.timestamp > latest.timestamp ? current : latest;
+      });
+    }
+    return null;
+  }, [dataHistory]);
   
   const availableMetrics = useMemo(() => {
     if (dataHistory.length > 0) {
