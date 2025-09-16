@@ -3,9 +3,7 @@
 
 import { useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  ChartContainer
-} from '@/components/ui/chart';
+import { ChartContainer } from '@/components/ui/chart';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Brush, Legend, Tooltip } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
@@ -40,6 +38,12 @@ const lineColors = [
   "hsl(var(--chart-5))",
 ];
 
+// More than 2 hours is considered a significant gap
+const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; 
+
+// Metrics that are typically percentages (0-100) are assigned to the left Y-axis
+const leftAxisMetrics = new Set(['soc', 'capacity']);
+
 const getFormattedTick = (tick: any, format: string) => {
     if (typeof tick === 'number') {
         try {
@@ -51,13 +55,6 @@ const getFormattedTick = (tick: any, format: string) => {
     }
     return '';
 };
-
-// More than 2 hours is considered a significant gap
-const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; 
-
-// Metrics that are typically percentages (0-100) are assigned to the left Y-axis
-const leftAxisMetrics = new Set(['soc', 'capacity']);
-
 
 export function ChartDisplay({
   batteryId,
@@ -87,7 +84,6 @@ export function ChartDisplay({
   const { processedData, brushFriendlyData } = useMemo(() => {
     if (!data || data.length === 0) return { processedData: [], brushFriendlyData: [] };
     
-    // 1. Filter by date range
     const now = new Date();
     const timeFilteredData = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
@@ -99,27 +95,24 @@ export function ChartDisplay({
         }
     });
     
-    if (timeFilteredData.length < 2) {
-      return { processedData: timeFilteredData, brushFriendlyData: timeFilteredData };
+    if (timeFilteredData.length < 1) {
+      return { processedData: [], brushFriendlyData: [] };
     }
 
-    // 2. CRITICAL: Sort data chronologically. This is essential for correct line rendering.
+    // 1. CRITICAL: Sort data chronologically. This is essential for correct line rendering.
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
 
-    // 3. Create a clean dataset for the Brush component that does NOT contain nulls.
+    // 2. Create a clean dataset for the Brush component that does NOT contain nulls.
     const brushData = [...sortedData];
 
-    // 4. Insert nulls for large time gaps to create visual breaks in the line chart.
-    const dataWithGaps: ProcessedDataPoint[] = [];
-    if (sortedData.length > 0) {
-      dataWithGaps.push(sortedData[0]);
+    // 3. Insert nulls for large time gaps to create visual breaks in the line chart.
+    const dataWithGaps: ProcessedDataPoint[] = [sortedData[0]];
+    if (sortedData.length > 1) {
       for (let i = 1; i < sortedData.length; i++) {
           const prevPoint = sortedData[i-1];
           const currentPoint = sortedData[i];
           
           if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-              // Create a gap point. Recharts will not connect lines over a null value.
-              // This point is purely for creating a visual break.
               const gapPoint: ProcessedDataPoint = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
               activeMetrics.forEach(metric => {
                   gapPoint[metric] = null;
@@ -144,20 +137,18 @@ export function ChartDisplay({
     return config;
   }, [activeMetrics]);
 
-  const handleBrushChange = useCallback((range: BrushRange | undefined) => {
+  const handleBrushChangeCallback = useCallback((range: BrushRange | undefined) => {
     if (range?.startIndex === undefined || range?.endIndex === undefined) {
       onBrushChange(null);
       return;
     } 
     
-    // The brush provides indices relative to its own data (brushFriendlyData)
     const brushSubset = brushFriendlyData.slice(range.startIndex, range.endIndex + 1);
 
     if(brushSubset.length > 0) {
       const firstTimestamp = brushSubset[0]!.timestamp;
       const lastTimestamp = brushSubset[brushSubset.length - 1]!.timestamp;
       
-      // Find the corresponding indices in the original, unfiltered `data` array.
       const startIndexInOriginal = data.findIndex(d => d.timestamp >= firstTimestamp);
       let endIndexInOriginal = -1;
       for (let i = data.length - 1; i >= 0; i--) {
@@ -181,7 +172,6 @@ export function ChartDisplay({
   const CustomTooltipContent = (props: any) => {
     const { active, payload, label } = props;
     if (active && payload && payload.length) {
-        // Check if the payload is from a null-gap point.
         if(payload[0].payload[payload[0].dataKey] === null) return null; 
 
         return (
@@ -259,13 +249,13 @@ export function ChartDisplay({
                 <XAxis
                     dataKey="timestamp"
                     tickFormatter={(value, index) => {
-                      // Don't render a tick for our null-gap data points
                       if (processedData[index] && activeMetrics.length > 0 && processedData[index][activeMetrics[0]] === null) return "";
 
                       if (processedData.length > 0) {
-                        const visibleRange = processedData[processedData.length-1].timestamp - processedData[0].timestamp;
+                        const first = processedData[0].timestamp;
+                        const last = processedData[processedData.length-1].timestamp;
+                        const visibleRange = (last && first) ? last - first : 0;
                         const oneDay = 24 * 60 * 60 * 1000;
-                        // Dynamically choose format based on the visible time range
                         const format = visibleRange <= oneDay * 2 ? 'HH:mm' : 'MMM d';
                         return getFormattedTick(value, format);
                       }
@@ -284,7 +274,7 @@ export function ChartDisplay({
                 <Legend />
                 {leftMetrics.map((metric, index) => (
                      <Line
-                        key={`${metric}-${index}`}
+                        key={metric}
                         yAxisId="left"
                         type="monotone"
                         dataKey={metric}
@@ -297,7 +287,7 @@ export function ChartDisplay({
                 ))}
                 {rightMetrics.map((metric, index) => (
                      <Line
-                        key={`${metric}-${index}`}
+                        key={metric}
                         yAxisId="right"
                         type="monotone"
                         dataKey={metric}
@@ -305,7 +295,7 @@ export function ChartDisplay({
                         strokeWidth={2}
                         dot={false}
                         connectNulls={false}
-isAnimationActive={false}
+                        isAnimationActive={false}
                     />
                 ))}
                 <Brush 
@@ -313,7 +303,7 @@ isAnimationActive={false}
                   height={30}
                   stroke="hsl(var(--primary))"
                   tickFormatter={(value) => getFormattedTick(value, 'MMM d')}
-                  onChange={handleBrushChange}
+                  onChange={handleBrushChangeCallback}
                   data={brushFriendlyData} 
                   startIndex={undefined}
                   endIndex={undefined}
