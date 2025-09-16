@@ -29,7 +29,7 @@ const metricIcons: { [key: string]: React.ReactNode } = {
   soc: <Battery className="h-4 w-4" />,
 };
 
-const coreMetrics = ['soc', 'voltage', 'current', 'capacity'];
+const coreMetrics = ['soc', 'voltage', 'current', 'capacity', 'temperature'];
 
 const formatMetricName = (name: string) => {
     return name
@@ -81,20 +81,19 @@ export function ChartControls({
   };
 
   const { mainMetrics, extraMetrics } = useMemo(() => {
+    const allMetrics = new Set(availableMetrics);
+    coreMetrics.forEach(cm => allMetrics.add(cm));
+
     const main = new Set<string>();
     const extra = new Set<string>();
     
-    availableMetrics.forEach(m => {
-        if (coreMetrics.includes(m)) {
+    allMetrics.forEach(m => {
+        if (coreMetrics.some(cm => m.toLowerCase().includes(cm))) {
             main.add(m);
         } else {
             extra.add(m);
         }
     });
-
-    // Ensure core metrics are always available for selection even if not in data yet
-    coreMetrics.forEach(cm => main.add(cm));
-
 
     return { mainMetrics: Array.from(main).sort(), extraMetrics: Array.from(extra).sort() };
   }, [availableMetrics]);
