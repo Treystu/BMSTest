@@ -6,7 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataPoint, ChartInfo, SelectedMetrics, ProcessedDataPoint } from '@/lib/types';
 import { subDays, subWeeks, subMonths } from 'date-fns';
-import { BatteryTrendChart } from './BatteryTrendChart';
+import { formatInTimeZone } from 'date-fns-tz';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ResponsiveContainer
+} from 'recharts';
+
 
 export type BrushRange = {
   startIndex?: number;
@@ -25,6 +29,59 @@ type ChartDisplayProps = {
 
 const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
 
+const lineColors: { [key: string]: string } = {
+  soc: "hsl(var(--chart-1))",
+  voltage: "hsl(var(--chart-2))",
+  current: "hsl(var(--chart-3))",
+  capacity: "hsl(var(--chart-4))",
+  temperature: "hsl(var(--chart-5))",
+};
+
+const getLineColor = (metric: string): string => {
+    if (lineColors[metric]) {
+        return lineColors[metric];
+    }
+    let hash = 0;
+    for (let i = 0; i < metric.length; i++) {
+        hash = metric.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h = hash % 360;
+    return `hsl(${h}, 70%, 50%)`;
+};
+
+const leftAxisMetricSet = new Set(['soc', 'capacity']);
+
+const getFormattedTimestamp = (ts: number, rangeInMs: number) => {
+    if (isNaN(ts)) return "";
+    try {
+        const oneDay = 24 * 60 * 60 * 1000;
+        const formatStr = rangeInMs <= oneDay * 2 ? 'HH:mm' : 'MMM d';
+        return formatInTimeZone(new Date(ts), 'UTC', formatStr);
+    } catch (e) {
+        return "";
+    }
+};
+
+const CustomTooltipContent = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+        const point = payload[0].payload;
+        
+        return (
+            <div className="p-3 bg-background border rounded-lg shadow-xl text-sm space-y-2">
+                <p className="font-bold">{formatInTimeZone(new Date(label), 'UTC', "MMM d, yyyy, h:mm:ss a")}</p>
+                {payload.map((p: any) => (
+                    <div key={p.dataKey} style={{ color: p.color }} className="flex justify-between items-center">
+                        <p className="capitalize font-semibold">{p.dataKey}:</p> 
+                        <p className="font-mono ml-4">{p.value?.toFixed(3)}</p>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+    return null;
+};
+
+
 export function ChartDisplay({
   batteryId,
   data,
@@ -35,12 +92,9 @@ export function ChartDisplay({
   onBrushChange,
 }: ChartDisplayProps) {
 
-  const activeMetrics = useMemo(() => Object.keys(selectedMetrics).filter(k => selectedMetrics[k as keyof SelectedMetrics]), [selectedMetrics]);
-
   const { processedData, brushFriendlyData } = useMemo(() => {
     if (!data || data.length === 0) return { processedData: [], brushFriendlyData: [] };
     
-    // 1. Filter by Date Range
     const now = new Date();
     const timeFilteredData = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
@@ -52,17 +106,13 @@ export function ChartDisplay({
         }
     });
     
-    if (timeFilteredData.length < 1) {
+    if (timeFilteredData.length === 0) {
       return { processedData: [], brushFriendlyData: [] };
     }
 
-    // 2. Critically: Sort by timestamp
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
-    
-    // 3. Create a clean dataset for the brush (no gaps)
     const brushData = [...sortedData]; 
     
-    // 4. Insert nulls for time gaps
     const finalDataWithGaps: ProcessedDataPoint[] = [];
     if (sortedData.length > 0) {
       finalDataWithGaps.push(sortedData[0]);
@@ -71,13 +121,11 @@ export function ChartDisplay({
         const currentPoint = sortedData[i];
         
         if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-          // Insert a gap point with null values
           const gapPoint: ProcessedDataPoint = {
-            timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 4), // Position gap point after previous point
-            type: 'single' // or any other appropriate type
+            timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 4), 
           };
-          activeMetrics.forEach(metric => {
-            gapPoint[metric] = null;
+          Object.keys(selectedMetrics).forEach(metric => {
+            if (selectedMetrics[metric as keyof SelectedMetrics]) gapPoint[metric] = null;
           });
           finalDataWithGaps.push(gapPoint);
         }
@@ -86,9 +134,8 @@ export function ChartDisplay({
       }
     }
 
-
     return { processedData: finalDataWithGaps, brushFriendlyData: brushData };
-  }, [data, dateRange, activeMetrics]);
+  }, [data, dateRange, selectedMetrics]);
   
   const handleBrushChangeCallback = useCallback((range: { startIndex?: number, endIndex?: number } | undefined) => {
     if (range?.startIndex === undefined || range?.endIndex === undefined) {
@@ -104,15 +151,8 @@ export function ChartDisplay({
       return;
     }
 
-    // Find the corresponding indices in the original, unsorted `data` array
-    const startIndexInOriginal = data.findIndex(d => d.timestamp >= startTimestamp);
-    let endIndexInOriginal = -1;
-    for (let i = data.length - 1; i >= 0; i--) {
-        if (data[i].timestamp <= endTimestamp) {
-            endIndexInOriginal = i;
-            break;
-        }
-    }
+    const startIndexInOriginal = data.findIndex(d => d.timestamp === startTimestamp);
+    const endIndexInOriginal = data.findIndex(d => d.timestamp === endTimestamp);
       
     if(startIndexInOriginal !== -1 && endIndexInOriginal !== -1) {
         onBrushChange({startIndex: startIndexInOriginal, endIndex: endIndexInOriginal});
@@ -120,6 +160,32 @@ export function ChartDisplay({
         onBrushChange(null);
     }
   }, [onBrushChange, brushFriendlyData, data]);
+
+  const { leftMetrics, rightMetrics } = useMemo(() => {
+    const leftMetrics: string[] = [];
+    const rightMetrics: string[] = [];
+    
+    Object.keys(selectedMetrics).forEach(metric => {
+        if (selectedMetrics[metric as keyof SelectedMetrics]) {
+            if (leftAxisMetricSet.has(metric.toLowerCase())) {
+                leftMetrics.push(metric);
+            } else {
+                rightMetrics.push(metric);
+            }
+        }
+    });
+
+    return { leftMetrics, rightMetrics };
+  }, [selectedMetrics]);
+
+  const visibleRange = useMemo(() => {
+      if(processedData.length < 2) return 0;
+      const timestamps = processedData.map(p => p.timestamp).filter((t): t is number => t !== null && t !== undefined);
+      if (timestamps.length < 2) return 0;
+      const first = Math.min(...timestamps);
+      const last = Math.max(...timestamps);
+      return last - first;
+  }, [processedData]);
 
   if (isLoading && data.length === 0) {
     return (
@@ -135,7 +201,7 @@ export function ChartDisplay({
     );
   }
 
-  if (!batteryId || processedData.length === 0) {
+  if (!batteryId || processedData.length < 2) {
     return (
         <Card>
             <CardHeader>
@@ -144,7 +210,7 @@ export function ChartDisplay({
             </CardHeader>
             <CardContent className="flex aspect-video w-full items-center justify-center rounded-lg border-dashed border-2 bg-muted/50">
                 <p className="text-muted-foreground">
-                  { !batteryId ? "Select a battery to view its chart." : "No data to display for the selected range." }
+                  { !batteryId ? "Select a battery to view its chart." : "Not enough data to display for the selected range." }
                 </p>
             </CardContent>
         </Card>
@@ -160,13 +226,64 @@ export function ChartDisplay({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <BatteryTrendChart
-            processedData={processedData}
-            brushData={brushFriendlyData}
-            selectedMetrics={selectedMetrics}
-            onBrushChange={handleBrushChangeCallback}
-        />
+        <ResponsiveContainer width="100%" height={450}>
+          <LineChart data={processedData} margin={{ top: 5, right: 20, left: 20, bottom: 20 }}>
+            <CartesianGrid vertical={false} />
+            <XAxis
+              dataKey="timestamp"
+              type="number"
+              scale="time"
+              domain={['dataMin', 'dataMax']}
+              tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
+              interval="preserveStartEnd"
+            />
+            <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--foreground))" domain={['dataMin - 1', 'dataMax + 1']} />
+            <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--foreground))" domain={['dataMin - 2', 'dataMax + 2']}/>
+            
+            <Tooltip content={<CustomTooltipContent />} />
+            <Legend />
+            
+            {leftMetrics.map((metric) => (
+              <Line
+                key={metric}
+                yAxisId="left"
+                type="monotone"
+                dataKey={metric}
+                stroke={getLineColor(metric)}
+                dot={false}
+                strokeWidth={2}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            ))}
+            
+            {rightMetrics.map((metric) => (
+              <Line
+                key={metric}
+                yAxisId="right"
+                type="monotone"
+                dataKey={metric}
+                stroke={getLineColor(metric)}
+                dot={false}
+                strokeWidth={2}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            ))}
+
+            <Brush
+              dataKey="timestamp"
+              height={30}
+              stroke="hsl(var(--primary))"
+              tickFormatter={(value) => formatInTimeZone(new Date(value), 'UTC', 'MMM d')}
+              onChange={handleBrushChangeCallback}
+              data={brushFriendlyData}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
 }
+
+    
