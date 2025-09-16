@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap, BatteryData } from "@/lib/types";
+import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap } from "@/lib/types";
 import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
 import { DataDisplay } from "@/components/data-display";

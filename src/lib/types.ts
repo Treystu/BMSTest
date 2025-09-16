@@ -24,3 +24,13 @@ export type BatteryData = {
 }
 
 export type BatteryDataMap = Record<string, BatteryData>;
+
+export type ImageFileStatus = 'queued' | 'processing' | 'success' | 'error';
+
+export type ImageFile = {
+  id: string;
+  preview: string;
+  name: string;
+  status: ImageFileStatus;
+  error?: string;
+};
