@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Zap, Waves, Thermometer, Battery, Hash, LineChart, BarChart } from 'lucide-react';
@@ -86,12 +87,16 @@ export function ChartControls({
     const main = new Set<string>();
     const extra = new Set<string>();
     
+    // Add core metrics that are actually available in the data
     coreMetrics.forEach(cm => {
         if(allMetrics.has(cm)) main.add(cm);
-    })
+    });
 
+    // Add remaining available metrics to the appropriate lists
     allMetrics.forEach(m => {
-        if (!coreMetrics.includes(m)) {
+        if (coreMetrics.includes(m)) {
+            main.add(m)
+        } else {
             extra.add(m);
         }
     });

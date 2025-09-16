@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -169,9 +170,8 @@ export default function Home() {
 
   const latestDataPoint = useMemo(() => {
     if (dataHistory.length > 0) {
-      return dataHistory.reduce((latest, current) => {
-        return current.timestamp > latest.timestamp ? current : latest;
-      });
+      // Data is already sorted, so the last element is the latest
+      return dataHistory[dataHistory.length - 1];
     }
     return null;
   }, [dataHistory]);
@@ -209,8 +209,9 @@ export default function Home() {
 
     slicedData.forEach(dp => {
         activeMetrics.forEach(metric => {
-            if (dp[metric] !== undefined && dp[metric] !== null) {
-                stats[metric].sum += dp[metric];
+            const value = dp[metric];
+            if (value !== undefined && value !== null && !isNaN(value)) {
+                stats[metric].sum += value;
                 stats[metric].count++;
             }
         });

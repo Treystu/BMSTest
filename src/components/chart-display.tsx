@@ -110,21 +110,24 @@ export function ChartDisplay({
     const brushData = [...sortedData];
 
     // 4. Insert nulls for large time gaps to create visual breaks in the line chart.
-    const dataWithGaps: ProcessedDataPoint[] = [sortedData[0]];
-    for (let i = 1; i < sortedData.length; i++) {
-        const prevPoint = sortedData[i-1];
-        const currentPoint = sortedData[i];
-        
-        if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-            // Create a gap point. Recharts will not connect lines over a null value.
-            // This point is purely for creating a visual break.
-            const gapPoint: ProcessedDataPoint = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
-            activeMetrics.forEach(metric => {
-                gapPoint[metric] = null;
-            });
-            dataWithGaps.push(gapPoint);
-        }
-        dataWithGaps.push(currentPoint);
+    const dataWithGaps: ProcessedDataPoint[] = [];
+    if (sortedData.length > 0) {
+      dataWithGaps.push(sortedData[0]);
+      for (let i = 1; i < sortedData.length; i++) {
+          const prevPoint = sortedData[i-1];
+          const currentPoint = sortedData[i];
+          
+          if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
+              // Create a gap point. Recharts will not connect lines over a null value.
+              // This point is purely for creating a visual break.
+              const gapPoint: ProcessedDataPoint = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
+              activeMetrics.forEach(metric => {
+                  gapPoint[metric] = null;
+              });
+              dataWithGaps.push(gapPoint);
+          }
+          dataWithGaps.push(currentPoint);
+      }
     }
     
     return { processedData: dataWithGaps, brushFriendlyData: brushData };
@@ -257,13 +260,16 @@ export function ChartDisplay({
                     dataKey="timestamp"
                     tickFormatter={(value, index) => {
                       // Don't render a tick for our null-gap data points
-                      if (processedData[index]?.[activeMetrics[0]] === null) return "";
+                      if (processedData[index] && activeMetrics.length > 0 && processedData[index][activeMetrics[0]] === null) return "";
 
-                      const visibleRange = processedData[processedData.length-1].timestamp - processedData[0].timestamp;
-                      const oneDay = 24 * 60 * 60 * 1000;
-                      // Dynamically choose format based on the visible time range
-                      const format = visibleRange <= oneDay * 2 ? 'HH:mm' : 'MMM d';
-                      return getFormattedTick(value, format);
+                      if (processedData.length > 0) {
+                        const visibleRange = processedData[processedData.length-1].timestamp - processedData[0].timestamp;
+                        const oneDay = 24 * 60 * 60 * 1000;
+                        // Dynamically choose format based on the visible time range
+                        const format = visibleRange <= oneDay * 2 ? 'HH:mm' : 'MMM d';
+                        return getFormattedTick(value, format);
+                      }
+                      return "";
                     }}
                     scale="time"
                     type="number"
@@ -276,9 +282,9 @@ export function ChartDisplay({
                     content={<CustomTooltipContent />}
                 />
                 <Legend />
-                {leftMetrics.map((metric) => (
+                {leftMetrics.map((metric, index) => (
                      <Line
-                        key={metric}
+                        key={`${metric}-${index}`}
                         yAxisId="left"
                         type="monotone"
                         dataKey={metric}
@@ -289,9 +295,9 @@ export function ChartDisplay({
                         isAnimationActive={false}
                     />
                 ))}
-                {rightMetrics.map((metric) => (
+                {rightMetrics.map((metric, index) => (
                      <Line
-                        key={metric}
+                        key={`${metric}-${index}`}
                         yAxisId="right"
                         type="monotone"
                         dataKey={metric}
@@ -299,7 +305,7 @@ export function ChartDisplay({
                         strokeWidth={2}
                         dot={false}
                         connectNulls={false}
-                        isAnimationActive={false}
+isAnimationActive={false}
                     />
                 ))}
                 <Brush 
@@ -308,7 +314,7 @@ export function ChartDisplay({
                   stroke="hsl(var(--primary))"
                   tickFormatter={(value) => getFormattedTick(value, 'MMM d')}
                   onChange={handleBrushChange}
-                  data={brushFriendlyData} // Use the clean data for the brush
+                  data={brushFriendlyData} 
                   startIndex={undefined}
                   endIndex={undefined}
                 />
