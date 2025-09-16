@@ -13,6 +13,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Brush } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
 import { subDays, subWeeks, subMonths } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 
 export type BrushRange = {
   startIndex?: number;
@@ -27,7 +28,6 @@ type ChartDisplayProps = {
   chartInfo: ChartInfo | null;
   isLoading: boolean;
   onBrushChange: (range: BrushRange | null) => void;
-  getFormattedDate: (value: any, format: string) => string;
 };
 
 const lineColors = [
@@ -38,6 +38,22 @@ const lineColors = [
   "hsl(var(--chart-5))",
 ];
 
+const getFormattedTick = (tick: any, format: string) => {
+    // Recharts can pass non-numeric values to the formatter during calculations.
+    // We only want to format the numeric timestamps.
+    if (typeof tick === 'number') {
+        try {
+            return formatInTimeZone(tick, 'UTC', format);
+        } catch (e) {
+            console.error('Date formatting error in getFormattedTick:', e);
+            return ''; // Return empty string on error to avoid clutter
+        }
+    }
+    // For any other internal values from recharts, return an empty string.
+    return '';
+};
+
+
 export function ChartDisplay({
   batteryId,
   data,
@@ -46,7 +62,6 @@ export function ChartDisplay({
   chartInfo,
   isLoading,
   onBrushChange,
-  getFormattedDate,
 }: ChartDisplayProps) {
 
   const filteredData = useMemo(() => {
@@ -150,7 +165,7 @@ export function ChartDisplay({
                     dataKey="timestamp"
                     tickFormatter={(value) => {
                       const format = (dateRange === '1h' || dateRange === '1d') ? 'HH:mm' : 'MMM d';
-                      return getFormattedDate(value, format);
+                      return getFormattedTick(value, format);
                     }}
                     scale="time"
                     type="number"
@@ -162,7 +177,7 @@ export function ChartDisplay({
                     content={<ChartTooltipContent 
                         indicator="line" 
                         labelFormatter={(value) => {
-                           return getFormattedDate(value, "MMM d, yyyy, h:mm:ss a");
+                           return getFormattedTick(value, "MMM d, yyyy, h:mm:ss a");
                         }}
                     />}
                 />
@@ -183,7 +198,7 @@ export function ChartDisplay({
                   dataKey="timestamp"
                   height={30}
                   stroke="hsl(var(--primary))"
-                  tickFormatter={(value) => getFormattedDate(value, 'MMM d')}
+                  tickFormatter={(value) => getFormattedTick(value, 'MMM d')}
                   onChange={handleBrushChange}
                   startIndex={undefined}
                   endIndex={undefined}
