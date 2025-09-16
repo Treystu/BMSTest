@@ -52,6 +52,7 @@ export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<BatteryDataMap>({});
   const [activeBatteryId, setActiveBatteryId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState<SelectedMetrics>(initialMetrics);
   const [dateRange, setDateRange] = useState<string>("all");
   const [brushRange, setBrushRange] = useState<BrushRange | null>(null);
@@ -59,9 +60,19 @@ export default function Home() {
 
   const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
   
-  const updateChartInfo = useCallback(async (batteryId: string, history: DataPoint[]) => {
-      if (history.length === 0) return;
-      console.log(`[updateChartInfo] Generating chart info for battery: ${batteryId}`);
+  const handleGenerateSummary = useCallback(async () => {
+      if (!activeBatteryId) {
+          toast({ title: "No Battery Selected", description: "Please select a battery to generate a summary.", variant: "destructive" });
+          return;
+      }
+      const history = dataByBattery[activeBatteryId]?.history || [];
+      if (history.length === 0) {
+          toast({ title: "No Data Available", description: "There is no data for the selected battery to summarize.", variant: "destructive" });
+          return;
+      }
+
+      console.log(`[handleGenerateSummary] Generating chart info for battery: ${activeBatteryId}`);
+      setIsGeneratingSummary(true);
 
       const insights = history.map(dp => `Data point at ${new Date(dp.timestamp).toLocaleString()}: ${Object.entries(dp).filter(([k]) => k !== 'timestamp').map(([k,v]) => `${k}: ${v}`).join(', ')}. `).join('');
       const metrics = Object.keys(history.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp');
@@ -70,43 +81,33 @@ export default function Home() {
           try {
               const result = await getChartInfo(metrics, "all time", insights);
               if (result.success && result.data) {
-                  console.log(`[updateChartInfo] Successfully got chart info for ${batteryId}`);
-                  setDataByBattery(prev => {
-                      if (!prev[batteryId]) return prev;
-                      return {
-                          ...prev,
-                          [batteryId]: {
-                              ...prev[batteryId],
-                              chartInfo: result.data
-                          }
-                      };
-                  });
+                  console.log(`[handleGenerateSummary] Successfully got chart info for ${activeBatteryId}`);
+                  setDataByBattery(prev => ({
+                      ...prev,
+                      [activeBatteryId]: {
+                          ...prev[activeBatteryId],
+                          chartInfo: result.data
+                      }
+                  }));
+                  toast({ title: "Summary Generated", description: "The AI-powered chart summary has been updated." });
               } else {
-                  console.error(`[updateChartInfo] Failed to get chart info for ${batteryId}`, result.error);
+                  console.error(`[handleGenerateSummary] Failed to get chart info for ${activeBatteryId}`, result.error);
+                  toast({ title: "Summary Generation Failed", description: result.error, variant: "destructive" });
               }
-          } catch(e) {
-              console.error(`[updateChartInfo] Error fetching chart info for ${batteryId}`, e);
+          } catch(e: any) {
+              console.error(`[handleGenerateSummary] Error fetching chart info for ${activeBatteryId}`, e);
+              toast({ title: "Summary Generation Error", description: e.message, variant: "destructive" });
+          } finally {
+              setIsGeneratingSummary(false);
           }
       }
-  }, []);
+  }, [activeBatteryId, dataByBattery, toast]);
 
   useEffect(() => {
     if (batteryIds.length > 0 && !activeBatteryId) {
         setActiveBatteryId(batteryIds[0]);
     }
   }, [batteryIds, activeBatteryId]);
-
-  useEffect(() => {
-      if (activeBatteryId && dataByBattery[activeBatteryId]) {
-          const batteryData = dataByBattery[activeBatteryId];
-          // Only update chart info if it doesn't exist yet to reduce API calls
-          if (batteryData.history.length > 0 && !batteryData.chartInfo?.title) {
-            console.log(`[useEffect] Triggering chart info update for ${activeBatteryId}`);
-            updateChartInfo(activeBatteryId, batteryData.history);
-          }
-      }
-  }, [activeBatteryId, dataByBattery, updateChartInfo]);
-
 
   const handleNewDataPoint = useCallback((extractionData: ExtractionResult) => {
     console.log('[handleNewDataPoint] Processing new data point:', extractionData);
@@ -169,7 +170,6 @@ export default function Home() {
             const existingHistory = mergedData[batteryId]?.history || [];
             const combined = [...existingHistory, ...newHistory].sort((a, b) => a.timestamp - b.timestamp);
             
-            // Ensure chartInfo from imported data is preserved.
             const existingChartInfo = mergedData[batteryId]?.chartInfo;
             const newChartInfo = newData[batteryId].chartInfo;
 
@@ -179,9 +179,6 @@ export default function Home() {
                 history: combined,
                 chartInfo: newChartInfo || existingChartInfo || null
             }
-            if (!newChartInfo && combined.length > 0) {
-              updateChartInfo(batteryId, combined);
-            }
         }
         return mergedData;
     });
@@ -189,7 +186,7 @@ export default function Home() {
     if (!activeBatteryId && Object.keys(newData).length > 0) {
         setActiveBatteryId(Object.keys(newData)[0]);
     }
-  }, [activeBatteryId, updateChartInfo]);
+  }, [activeBatteryId]);
   
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
@@ -316,6 +313,9 @@ export default function Home() {
               setSelectedMetrics={setSelectedMetrics}
               dateRange={dateRange}
               setDateRange={setDateRange}
+              onGenerateSummary={handleGenerateSummary}
+              isGeneratingSummary={isGeneratingSummary}
+              hasData={dataHistory.length > 0}
             />
             <ChartDisplay
               batteryId={activeBatteryId || ""}
