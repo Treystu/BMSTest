@@ -47,6 +47,25 @@ const getFormattedDate = (timestamp: number | Date | string, formatStr: string):
     }
 };
 
+const mergeAndSortHistory = (histories: DataPoint[][]): DataPoint[] => {
+    const dataMap = new Map<number, DataPoint>();
+
+    for (const history of histories) {
+        for (const point of history) {
+            if (point && typeof point.timestamp === 'number') {
+                const existing = dataMap.get(point.timestamp);
+                if (existing) {
+                    dataMap.set(point.timestamp, { ...existing, ...point });
+                } else {
+                    dataMap.set(point.timestamp, point);
+                }
+            }
+        }
+    }
+    
+    return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+}
+
 export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<BatteryDataMap>({});
   const [activeBatteryId, setActiveBatteryId] = useState<string | null>(null);
@@ -93,7 +112,7 @@ export default function Home() {
         
         setDataByBattery(prev => {
             const existingHistory = prev[batteryId]?.history || [];
-            const combinedHistory = [...existingHistory, dataPoint].sort((a, b) => a.timestamp - b.timestamp);
+            const combinedHistory = mergeAndSortHistory([existingHistory, [dataPoint]]);
             
             return {
                 ...prev,
@@ -124,7 +143,7 @@ export default function Home() {
         for (const batteryId in newData) {
             const newHistory = newData[batteryId].history || [];
             const existingHistory = mergedData[batteryId]?.history || [];
-            const combined = [...existingHistory, ...newHistory].sort((a, b) => a.timestamp - b.timestamp);
+            const combined = mergeAndSortHistory([existingHistory, newHistory]);
             
             const existingChartInfo = mergedData[batteryId]?.chartInfo;
             const newChartInfo = newData[batteryId].chartInfo;
