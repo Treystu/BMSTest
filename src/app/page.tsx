@@ -6,11 +6,12 @@ import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
 import { DataDisplay } from "@/components/data-display";
 import { ChartControls } from "@/components/chart-controls";
-import { ChartDisplay } from "@/components/chart-display";
+import { ChartDisplay, type BrushRange } from "@/components/chart-display";
 import { getChartInfo } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { format } from "date-fns";
 
 const initialMetrics: SelectedMetrics = {
   soc: true,
@@ -36,7 +37,8 @@ export default function Home() {
   const [activeBatteryId, setActiveBatteryId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState<SelectedMetrics>(initialMetrics);
-  const [timeRange, setTimeRange] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<string>("all");
+  const [brushRange, setBrushRange] = useState<BrushRange | null>(null);
   const { toast } = useToast();
 
   const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
@@ -191,6 +193,47 @@ export default function Home() {
     }
     return Object.keys(initialMetrics);
   }, [dataHistory]);
+
+  const brushData = useMemo(() => {
+    if (!brushRange || !brushRange.startIndex || !brushRange.endIndex || !activeBatteryId) return null;
+
+    const sortedData = [...dataHistory].sort((a, b) => a.timestamp - b.timestamp);
+    const slicedData = sortedData.slice(brushRange.startIndex, brushRange.endIndex + 1);
+    
+    if (slicedData.length === 0) return null;
+
+    const stats: { [key: string]: { sum: number; count: number; average: number } } = {};
+    const activeMetrics = Object.keys(selectedMetrics).filter(k => selectedMetrics[k]);
+
+    activeMetrics.forEach(metric => {
+        stats[metric] = { sum: 0, count: 0, average: 0 };
+    });
+
+    slicedData.forEach(dp => {
+        activeMetrics.forEach(metric => {
+            if (dp[metric] !== undefined && dp[metric] !== null) {
+                stats[metric].sum += dp[metric];
+                stats[metric].count++;
+            }
+        });
+    });
+
+    activeMetrics.forEach(metric => {
+        if (stats[metric].count > 0) {
+            stats[metric].average = stats[metric].sum / stats[metric].count;
+        }
+    });
+
+    return {
+        startDate: format(new Date(slicedData[0].timestamp), "PPpp"),
+        endDate: format(new Date(slicedData[slicedData.length - 1].timestamp), "PPpp"),
+        stats
+    };
+  }, [brushRange, dataHistory, selectedMetrics, activeBatteryId]);
+
+  const handleBrushChange = useCallback((range: BrushRange | null) => {
+    setBrushRange(range);
+  }, []);
     
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -224,20 +267,43 @@ export default function Home() {
                     </CardContent>
                 </Card>
             )}
+            {brushData && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Selected Range Analysis</CardTitle>
+                        <CardDescription>
+                            Average values from {brushData.startDate} to {brushData.endDate}.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            {Object.entries(brushData.stats).map(([metric, data]) => (
+                               data.count > 0 && (
+                                <div key={metric}>
+                                    <p className="font-semibold capitalize">{metric.replace(/_/g, ' ')}</p>
+                                    <p className="text-muted-foreground">{data.average.toFixed(3)}</p>
+                                </div>
+                               )
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
             <ChartControls
               availableMetrics={availableMetrics}
               selectedMetrics={selectedMetrics}
               setSelectedMetrics={setSelectedMetrics}
-              timeRange={timeRange}
-              setTimeRange={setTimeRange}
+              dateRange={dateRange}
+              setDateRange={setDateRange}
             />
             <ChartDisplay
               batteryId={activeBatteryId || ""}
               data={dataHistory}
               selectedMetrics={selectedMetrics}
-              timeRange={timeRange}
+              dateRange={dateRange}
               chartInfo={chartInfo}
               isLoading={isLoading && dataHistory.length === 0}
+              onBrushChange={handleBrushChange}
             />
           </div>
         </div>

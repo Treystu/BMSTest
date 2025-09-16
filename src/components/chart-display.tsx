@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   ChartContainer,
@@ -9,18 +9,24 @@ import {
   ChartLegend,
   ChartLegendContent
 } from '@/components/ui/chart';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Brush } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
-import { subHours, subDays, subWeeks, subMonths, format } from 'date-fns';
+import { subDays, subWeeks, subMonths, format } from 'date-fns';
+
+export type BrushRange = {
+  startIndex?: number;
+  endIndex?: number;
+};
 
 type ChartDisplayProps = {
   batteryId: string;
   data: DataPoint[];
   selectedMetrics: SelectedMetrics;
-  timeRange: string;
+  dateRange: string;
   chartInfo: ChartInfo | null;
   isLoading: boolean;
+  onBrushChange: (range: BrushRange | null) => void;
 };
 
 const lineColors = [
@@ -35,9 +41,10 @@ export function ChartDisplay({
   batteryId,
   data,
   selectedMetrics,
-  timeRange,
+  dateRange,
   chartInfo,
   isLoading,
+  onBrushChange,
 }: ChartDisplayProps) {
 
   const sortedData = useMemo(() => {
@@ -45,14 +52,11 @@ export function ChartDisplay({
   }, [data]);
 
   const filteredData = useMemo(() => {
-    if (timeRange === 'all') return sortedData;
+    if (dateRange === 'all') return sortedData;
     const now = Date.now();
     let startTime: number;
 
-    switch (timeRange) {
-      case '1h':
-        startTime = subHours(now, 1).getTime();
-        break;
+    switch (dateRange) {
       case '1d':
         startTime = subDays(now, 1).getTime();
         break;
@@ -66,7 +70,7 @@ export function ChartDisplay({
         return sortedData;
     }
     return sortedData.filter(d => d.timestamp >= startTime);
-  }, [sortedData, timeRange]);
+  }, [sortedData, dateRange]);
   
   const activeMetrics = useMemo(() => Object.keys(selectedMetrics).filter(k => selectedMetrics[k]), [selectedMetrics]);
   
@@ -84,6 +88,14 @@ export function ChartDisplay({
     });
     return config;
   }, [activeMetrics, filteredData]);
+
+  const handleBrushChange = useCallback((range: BrushRange | undefined) => {
+    if (range?.startIndex === undefined || range?.endIndex === undefined) {
+      onBrushChange(null);
+    } else {
+      onBrushChange(range);
+    }
+  }, [onBrushChange]);
 
 
   if (isLoading && data.length === 0) {
@@ -125,7 +137,7 @@ export function ChartDisplay({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="h-[400px] w-full">
+        <ChartContainer config={chartConfig} className="h-[450px] w-full">
             <LineChart
                 accessibilityLayer
                 data={filteredData}
@@ -133,7 +145,7 @@ export function ChartDisplay({
                   top: 5,
                   right: 10,
                   left: 10,
-                  bottom: 5,
+                  bottom: 20, // Increased bottom margin for Brush
                 }}
             >
                 <CartesianGrid vertical={false} />
@@ -141,7 +153,7 @@ export function ChartDisplay({
                     dataKey="timestamp"
                     tickFormatter={(value) => {
                       const date = new Date(value);
-                      if (timeRange === '1h' || timeRange === '1d') {
+                      if (dateRange === '1h' || dateRange === '1d') {
                         return format(date, 'HH:mm');
                       }
                       return format(date, 'MMM d');
@@ -177,6 +189,18 @@ export function ChartDisplay({
                         animationDuration={300}
                     />
                 ))}
+                <Brush 
+                  dataKey="timestamp"
+                  height={30}
+                  stroke="hsl(var(--primary))"
+                  tickFormatter={(value) => {
+                      const date = new Date(value);
+                      return format(date, 'MMM d');
+                  }}
+                  onChange={handleBrushChange}
+                  startIndex={undefined}
+                  endIndex={undefined}
+                />
             </LineChart>
         </ChartContainer>
       </CardContent>

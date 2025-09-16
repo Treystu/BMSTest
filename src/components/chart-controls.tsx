@@ -13,8 +13,8 @@ type ChartControlsProps = {
   availableMetrics: string[];
   selectedMetrics: SelectedMetrics;
   setSelectedMetrics: (metrics: SelectedMetrics) => void;
-  timeRange: string;
-  setTimeRange: (range: string) => void;
+  dateRange: string;
+  setDateRange: (range: string) => void;
 };
 
 const metricIcons: { [key: string]: React.ReactNode } = {
@@ -66,8 +66,8 @@ export function ChartControls({
   availableMetrics,
   selectedMetrics,
   setSelectedMetrics,
-  timeRange,
-  setTimeRange,
+  dateRange,
+  setDateRange,
 }: ChartControlsProps) {
   const handleMetricChange = (metric: string, checked: boolean) => {
     setSelectedMetrics({ ...selectedMetrics, [metric]: checked });
@@ -126,13 +126,12 @@ export function ChartControls({
           )}
         </div>
         <div className="flex-1">
-          <Label className="text-base font-semibold">Time Range</Label>
-          <Tabs value={timeRange} onValueChange={setTimeRange} className="mt-2">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="1h">1H</TabsTrigger>
-              <TabsTrigger value="1d">1D</TabsTrigger>
-              <TabsTrigger value="1w">1W</TabsTrigger>
-              <TabsTrigger value="1m">1M</TabsTrigger>
+          <Label className="text-base font-semibold">Date Range</Label>
+          <Tabs value={dateRange} onValueChange={setDateRange} className="mt-2">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="1d">Last Day</TabsTrigger>
+              <TabsTrigger value="1w">Last Week</TabsTrigger>
+              <TabsTrigger value="1m">Last Month</TabsTrigger>
               <TabsTrigger value="all">All</TabsTrigger>
             </TabsList>
           </Tabs>
