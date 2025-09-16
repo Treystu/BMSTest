@@ -44,7 +44,6 @@ export default function Home() {
   const { toast } = useToast();
 
   const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
-  const [lastUpdatedBattery, setLastUpdatedBattery] = useState<string | null>(null);
   
   const updateChartInfo = useCallback(async (batteryId: string, history: DataPoint[]) => {
       if (history.length === 0) return;
@@ -84,16 +83,15 @@ export default function Home() {
   }, [batteryIds, activeBatteryId]);
 
   useEffect(() => {
-      if (lastUpdatedBattery && dataByBattery[lastUpdatedBattery]) {
-          const batteryData = dataByBattery[lastUpdatedBattery];
+      if (activeBatteryId && dataByBattery[activeBatteryId]) {
+          const batteryData = dataByBattery[activeBatteryId];
           // Only update chart info if it doesn't exist yet to reduce API calls
           if (batteryData.history.length > 0 && !batteryData.chartInfo?.title) {
-            console.log(`[useEffect] Triggering chart info update for ${lastUpdatedBattery}`);
-            updateChartInfo(lastUpdatedBattery, batteryData.history);
+            console.log(`[useEffect] Triggering chart info update for ${activeBatteryId}`);
+            updateChartInfo(activeBatteryId, batteryData.history);
           }
-          setLastUpdatedBattery(null); 
       }
-  }, [lastUpdatedBattery, dataByBattery, updateChartInfo]);
+  }, [activeBatteryId, dataByBattery, updateChartInfo]);
 
 
   const handleNewDataPoint = useCallback((extractionData: ExtractionResult) => {
@@ -134,8 +132,6 @@ export default function Home() {
                 }
             };
         });
-        
-        setLastUpdatedBattery(batteryId);
         
         if (!activeBatteryId) {
             setActiveBatteryId(batteryId);
