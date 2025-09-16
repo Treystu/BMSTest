@@ -39,17 +39,14 @@ const lineColors = [
 ];
 
 const getFormattedTick = (tick: any, format: string) => {
-    // Recharts can pass non-numeric values to the formatter during calculations.
-    // We only want to format the numeric timestamps.
     if (typeof tick === 'number') {
         try {
             return formatInTimeZone(tick, 'UTC', format);
         } catch (e) {
             console.error('Date formatting error in getFormattedTick:', e);
-            return ''; // Return empty string on error to avoid clutter
+            return '';
         }
     }
-    // For any other internal values from recharts, return an empty string.
     return '';
 };
 
@@ -65,8 +62,10 @@ export function ChartDisplay({
 }: ChartDisplayProps) {
 
   const filteredData = useMemo(() => {
+    if (!data || data.length === 0) return [];
     if (dateRange === 'all') return data;
-    const now = Date.now();
+
+    const now = new Date();
     let startTime: number;
 
     switch (dateRange) {
@@ -164,12 +163,13 @@ export function ChartDisplay({
                 <XAxis
                     dataKey="timestamp"
                     tickFormatter={(value) => {
-                      const format = (dateRange === '1h' || dateRange === '1d') ? 'HH:mm' : 'MMM d';
+                      const format = (dateRange === '1d') ? 'HH:mm' : 'MMM d';
                       return getFormattedTick(value, format);
                     }}
                     scale="time"
                     type="number"
                     domain={['dataMin', 'dataMax']}
+                    interval="preserveStartEnd"
                 />
                 <YAxis />
                 <ChartTooltip
