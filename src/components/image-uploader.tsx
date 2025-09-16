@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/app/actions';
 import type { ExtractionResult } from '@/lib/types';
+import JSZip from 'jszip';
 
 type ImageFile = {
     preview: string;
@@ -21,6 +22,10 @@ type ImageUploaderProps = {
   isLoading: boolean;
 };
 
+const isImageFile = (fileName: string) => {
+    return /\.(jpe?g|png|webp)$/i.test(fileName);
+};
+
 export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: ImageUploaderProps) {
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
   const [progress, setProgress] = useState(0);
@@ -28,21 +33,72 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (files) {
-      const newFiles: ImageFile[] = [];
-      for (const file of Array.from(files)) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          newFiles.push({ preview: reader.result as string, name: file.name });
-          if (newFiles.length === files.length) {
-            setImageFiles(prev => [...prev, ...newFiles]);
-          }
-        };
-        reader.readAsDataURL(file);
+    if (!files) return;
+
+    let newFiles: ImageFile[] = [];
+    let zipFile: File | null = null;
+    
+    for (const file of Array.from(files)) {
+      if (file.type === 'application/zip') {
+        zipFile = file;
+        break; 
+      }
+      if (file.type.startsWith('image/')) {
+        newFiles.push(file as unknown as ImageFile);
       }
     }
+    
+    if (zipFile) {
+        try {
+            const zip = await JSZip.loadAsync(zipFile);
+            const imagePromises: Promise<ImageFile>[] = [];
+            
+            zip.forEach((relativePath, zipEntry) => {
+                if (!zipEntry.dir && isImageFile(zipEntry.name)) {
+                    const imagePromise = zipEntry.async('base64').then(base64 => {
+                        const mimeType = zipEntry.name.endsWith('.png') ? 'image/png' : 'image/jpeg';
+                        return {
+                            preview: `data:${mimeType};base64,${base64}`,
+                            name: zipEntry.name
+                        };
+                    });
+                    imagePromises.push(imagePromise);
+                }
+            });
+
+            const unzippedImages = await Promise.all(imagePromises);
+            newFiles.push(...unzippedImages);
+        } catch (error) {
+            console.error("Error unzipping file:", error);
+            toast({
+                title: "ZIP File Error",
+                description: "There was an error processing the ZIP file.",
+                variant: 'destructive'
+            });
+            return;
+        }
+    }
+    
+    if(newFiles.some(f => !f.preview)){ // This means we have File objects not ImageFile objects
+        const filePromises = newFiles.map(file => {
+            return new Promise<ImageFile>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    resolve({ preview: reader.result as string, name: (file as unknown as File).name });
+                };
+                reader.readAsDataURL(file as unknown as File);
+            })
+        })
+        const loadedFiles = await Promise.all(filePromises);
+        setImageFiles(prev => [...prev, ...loadedFiles]);
+
+    } else {
+        setImageFiles(prev => [...prev, ...newFiles]);
+    }
+    
+    if(fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleUploadClick = () => {
@@ -51,26 +107,17 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
 
   const handleClearImage = (index: number) => {
     setImageFiles(files => files.filter((_, i) => i !== index));
-    if (fileInputRef.current) {
-        const dt = new DataTransfer();
-        const remainingFiles = Array.from(fileInputRef.current.files!).filter((_,i) => i !== index);
-        remainingFiles.forEach(file => dt.items.add(file));
-        fileInputRef.current.files = dt.files;
-    }
   };
   
   const handleClearAll = () => {
     setImageFiles([]);
-    if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-    }
   }
 
   const handleSubmit = () => {
     if (imageFiles.length === 0) {
       toast({
         title: 'No Images Selected',
-        description: 'Please select one or more image files to extract data from.',
+        description: 'Please select one or more image files (or a ZIP) to extract data from.',
         variant: 'destructive',
       });
       return;
@@ -81,26 +128,32 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
     startTransition(async () => {
       let successfulExtractions = 0;
       let failedExtractions = 0;
+      const totalImages = imageFiles.length;
 
-      for (let i = 0; i < imageFiles.length; i++) {
+      for (let i = 0; i < totalImages; i++) {
         const file = imageFiles[i];
-        console.log(`[ImageUploader] Processing image ${i + 1}/${imageFiles.length}: ${file.name}`);
-        const result = await processImage(file.preview, file.name);
+        console.log(`[ImageUploader] Processing image ${i + 1}/${totalImages}: ${file.name}`);
+        try {
+            const result = await processImage(file.preview, file.name);
 
-        if (result.success && result.data) {
-          onNewDataPoint(result.data);
-          successfulExtractions++;
-          console.log(`[ImageUploader] Success for ${file.name}`);
-        } else {
-          failedExtractions++;
-          console.error(`[ImageUploader] Failure for ${file.name}:`, result.error);
+            if (result.success && result.data) {
+              onNewDataPoint(result.data);
+              successfulExtractions++;
+              console.log(`[ImageUploader] Success for ${file.name}`);
+            } else {
+              failedExtractions++;
+              console.error(`[ImageUploader] Failure for ${file.name}:`, result.error);
+            }
+        } catch (e) {
+            failedExtractions++;
+            console.error(`[ImageUploader] Critical Failure for ${file.name}:`, e);
         }
-        setProgress(((i + 1) / imageFiles.length) * 100);
+        setProgress(((i + 1) / totalImages) * 100);
       }
       
       toast({
         title: 'Data Extraction Complete',
-        description: `${successfulExtractions} out of ${imageFiles.length} images processed. ${failedExtractions > 0 ? `${failedExtractions} failed.` : ''}`,
+        description: `${successfulExtractions} out of ${totalImages} images processed. ${failedExtractions > 0 ? `${failedExtractions} failed.` : ''}`,
         variant: failedExtractions > 0 ? 'destructive' : 'default',
       });
       
@@ -113,7 +166,7 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
     <Card>
       <CardHeader>
         <CardTitle>1. Upload Images</CardTitle>
-        <CardDescription>Upload your images. The app will automatically identify the battery and sort the data.</CardDescription>
+        <CardDescription>Upload images or a single ZIP file. The app will automatically identify the battery and sort the data.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="relative w-full border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50 overflow-hidden p-2 min-h-[150px]">
@@ -142,7 +195,7 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
           ) : (
             <div className="text-center text-muted-foreground p-4">
               <Upload className="mx-auto h-12 w-12" />
-              <p className="mt-2 text-sm">Click button below to upload images</p>
+              <p className="mt-2 text-sm">Click button below to upload images or a ZIP</p>
             </div>
           )}
         </div>
@@ -151,13 +204,13 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
           ref={fileInputRef}
           onChange={handleFileChange}
           className="hidden"
-          accept="image/png, image/jpeg, image/webp"
+          accept="image/png, image/jpeg, image/webp, application/zip"
           multiple
         />
         <div className="flex flex-col sm:flex-row gap-2">
             <Button onClick={handleUploadClick} variant="outline" className="w-full" disabled={isLoading || isPending}>
               <Upload className="mr-2 h-4 w-4" />
-              Choose Images
+              Choose Files or ZIP
             </Button>
             <Button onClick={handleClearAll} variant="ghost" disabled={isLoading || isPending || imageFiles.length === 0}>
                 <Trash2 className="mr-2 h-4 w-4" /> Clear
