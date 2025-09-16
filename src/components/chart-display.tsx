@@ -122,12 +122,15 @@ export function ChartDisplay({
       return;
     }
 
+    // Find the corresponding indices in the original unsorted/unfiltered `data` array
+    // This is important if the brush selection needs to reflect on the original dataset
     const startIndexInOriginal = data.findIndex(d => d.timestamp === startTimestamp);
     const endIndexInOriginal = data.findIndex(d => d.timestamp === endTimestamp);
       
     if(startIndexInOriginal !== -1 && endIndexInOriginal !== -1) {
         onBrushChange({startIndex: startIndexInOriginal, endIndex: endIndexInOriginal});
     } else {
+        // Fallback for when the data might not perfectly align, though with sorting it should.
         onBrushChange(null);
     }
   }, [onBrushChange, sortedData, data]);
@@ -247,8 +250,6 @@ export function ChartDisplay({
               tickFormatter={(value) => formatInTimeZone(new Date(value), 'UTC', 'MMM d')}
               onChange={handleBrushChangeCallback}
               data={sortedData}
-              startIndex={sortedData.length > 100 ? sortedData.length - 100 : 0}
-              endIndex={sortedData.length - 1}
             />
           </LineChart>
         </ResponsiveContainer>
