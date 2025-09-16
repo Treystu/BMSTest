@@ -31,22 +31,13 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      if (imageFiles.length + files.length > 20) {
-        toast({
-          title: 'Too many files',
-          description: 'You can upload a maximum of 20 files at a time.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
       const newFiles: ImageFile[] = [];
       for (const file of Array.from(files)) {
         const reader = new FileReader();
         reader.onloadend = () => {
           newFiles.push({ preview: reader.result as string, name: file.name });
           if (newFiles.length === files.length) {
-            setImageFiles(prev => [...prev, ...newFiles].slice(0, 20));
+            setImageFiles(prev => [...prev, ...newFiles]);
           }
         };
         reader.readAsDataURL(file);
@@ -122,7 +113,7 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
     <Card>
       <CardHeader>
         <CardTitle>1. Upload Images</CardTitle>
-        <CardDescription>Upload up to 20 images. The app will automatically identify the battery and sort the data.</CardDescription>
+        <CardDescription>Upload your images. The app will automatically identify the battery and sort the data.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="relative w-full border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50 overflow-hidden p-2 min-h-[150px]">
