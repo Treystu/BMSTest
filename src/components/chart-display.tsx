@@ -67,7 +67,7 @@ const CustomTooltipContent = ({ active, payload, label }: any) => {
                 {payload.map((p: any) => (
                     p.value !== null && p.value !== undefined && (
                         <div key={p.dataKey} style={{ color: p.color }} className="flex justify-between items-center">
-                            <p className="capitalize font-semibold">{p.dataKey}:</p>
+                            <p className="capitalize font-semibold">{p.dataKey.replace(/_/g, ' ')}:</p>
                             <p className="font-mono ml-4">{p.value?.toFixed(3)}</p>
                         </div>
                     )
@@ -138,7 +138,7 @@ export function ChartDisplay({
     
     Object.keys(selectedMetrics).forEach(metric => {
         if (selectedMetrics[metric as keyof SelectedMetrics]) {
-            if (leftAxisMetricSet.has(metric.toLowerCase())) {
+            if (leftAxisMetricSet.has(metric)) {
                 left.push(metric);
             } else {
                 right.push(metric);
@@ -206,8 +206,8 @@ export function ChartDisplay({
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
               interval="preserveStartEnd"
             />
-            <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--foreground))" domain={['dataMin - 1', 'dataMax + 1']} />
-            <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--foreground))" domain={['dataMin - 2', 'dataMax + 2']}/>
+            <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--foreground))" domain={['dataMin - 1', 'auto']} />
+            <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--foreground))" domain={['dataMin - 2', 'auto']}/>
             
             <Tooltip content={<CustomTooltipContent />} />
             <Legend />
@@ -221,6 +221,7 @@ export function ChartDisplay({
                 stroke={getLineColor(metric)}
                 dot={false}
                 strokeWidth={2}
+                connectNulls={true}
                 isAnimationActive={false}
               />
             ))}
@@ -234,6 +235,7 @@ export function ChartDisplay({
                 stroke={getLineColor(metric)}
                 dot={false}
                 strokeWidth={2}
+                connectNulls={true}
                 isAnimationActive={false}
               />
             ))}
