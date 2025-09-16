@@ -74,34 +74,31 @@ export function ChartControls({
   };
 
   const { mainMetrics, extraMetrics } = useMemo(() => {
-    const main: string[] = [];
-    const extra: string[] = [];
+    const main = new Set<string>();
+    const extra = new Set<string>();
+    
     availableMetrics.forEach(m => {
         const lowerM = m.toLowerCase();
-        // Exact matches or if the available metric name contains a standard metric name
-        if (standardMetrics.includes(lowerM) || standardMetrics.some(sm => lowerM.includes(sm))) {
-            main.push(m);
-        } else {
-            extra.push(m);
+        let isMain = false;
+        for (const sm of standardMetrics) {
+            if (lowerM.includes(sm)) {
+                main.add(m);
+                isMain = true;
+                break;
+            }
+        }
+        if (!isMain) {
+            extra.add(m);
         }
     });
-    // Ensure standard metrics that might not have been in the first check are included if available
-     const mainSet = new Set(main);
-     availableMetrics.forEach(m => {
-         if (standardMetrics.includes(m.toLowerCase()) && !mainSet.has(m)) {
-             main.push(m);
-             mainSet.add(m);
-         }
-     });
-     const finalExtra = extra.filter(m => !mainSet.has(m));
 
-    return { mainMetrics: [...mainSet].sort(), extraMetrics: finalExtra.sort() };
+    return { mainMetrics: Array.from(main).sort(), extraMetrics: Array.from(extra).sort() };
   }, [availableMetrics]);
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>3. Chart Controls</CardTitle>
+        <CardTitle>Chart Controls</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col md:flex-row gap-6">
         <div className="flex-1 space-y-4">

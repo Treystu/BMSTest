@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult } from "@/lib/types";
 import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
@@ -9,7 +9,7 @@ import { ChartControls } from "@/components/chart-controls";
 import { ChartDisplay } from "@/components/chart-display";
 import { getChartInfo } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 const DUPLICATE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -84,10 +84,9 @@ const mergeGroup = (group: DataPoint[]): DataPoint => {
     return mergedPoint;
 };
 
-
 export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<Record<string, BatteryData>>({});
-  const [activeBatteryId, setActiveBatteryId] = useState<string>("");
+  const [activeBatteryId, setActiveBatteryId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState<SelectedMetrics>(initialMetrics);
   const [timeRange, setTimeRange] = useState<string>("all");
@@ -101,7 +100,37 @@ export default function Home() {
     }
   }, [batteryIds, activeBatteryId]);
 
-  const handleUploadComplete = async (results: { success: boolean, data?: ExtractionResult, error?: string }[]) => {
+  const updateChartInfo = useCallback(async (batteryId: string, history: DataPoint[]) => {
+      const fullHistory = history;
+      if (fullHistory.length === 0) return;
+
+      const insights = fullHistory.map(dp => `Data point at ${new Date(dp.timestamp).toLocaleString()}: ${Object.entries(dp).filter(([k]) => k !== 'timestamp').map(([k,v]) => `${k}: ${v}`).join(', ')}. `).join('');
+      const metrics = Object.keys(fullHistory.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp');
+
+      if (metrics.length > 0) {
+          try {
+              const result = await getChartInfo(metrics, "all time", insights);
+              if (result.success && result.data) {
+                  setDataByBattery(prev => {
+                      if (!prev[batteryId] || JSON.stringify(prev[batteryId].chartInfo) === JSON.stringify(result.data)) {
+                          return prev;
+                      }
+                      return {
+                          ...prev,
+                          [batteryId]: {
+                              ...prev[batteryId],
+                              chartInfo: result.data
+                          }
+                      };
+                  });
+              }
+          } catch(e) {
+              console.error(`Error fetching chart info for ${batteryId}`, e);
+          }
+      }
+  }, []);
+
+  const handleUploadComplete = useCallback(async (results: { success: boolean, data?: ExtractionResult, error?: string }[]) => {
     console.log("handleUploadComplete received:", {
         totalResults: results.length,
         successful: results.filter(r => r.success).length,
@@ -116,13 +145,13 @@ export default function Home() {
         return;
     }
 
-    const newDataByBattery = new Map<string, { newPoints: DataPoint[], allInsights: string }>();
+    const newDataByBattery = new Map<string, { newPoints: DataPoint[] }>();
 
     for (const data of successfulExtractions) {
         const { batteryId, extractedData, timestamp } = data;
         
         if (!newDataByBattery.has(batteryId)) {
-            newDataByBattery.set(batteryId, { newPoints: [], allInsights: '' });
+            newDataByBattery.set(batteryId, { newPoints: [] });
         }
         
         const entry = newDataByBattery.get(batteryId)!;
@@ -151,7 +180,6 @@ export default function Home() {
             }
             processObject(parsedData);
             entry.newPoints.push(dataPoint);
-            entry.allInsights += `Data point at ${new Date(dataPoint.timestamp).toLocaleString()}: ${Object.entries(dataPoint).filter(([k]) => k !== 'timestamp').map(([k,v]) => `${k}: ${v}`).join(', ')}. `;
         } catch (e: any) {
             console.error(`Failed to parse data for battery ${batteryId}`, e);
             toast({
@@ -161,12 +189,14 @@ export default function Home() {
             });
         }
     }
-    
+
     setDataByBattery(prev => {
         const updatedData = { ...prev };
         let firstNewBatteryId: string | null = null;
+        const updatedBatteryIds: string[] = [];
 
         newDataByBattery.forEach((value, key) => {
+            updatedBatteryIds.push(key);
             if (!updatedData[key]) {
                 if (!firstNewBatteryId) {
                     firstNewBatteryId = key;
@@ -187,50 +217,22 @@ export default function Home() {
         });
         
         console.log("Updated dataByBattery state:", updatedData);
-
+        
+        // This needs to be outside the main state update to avoid the render error.
+        // We'll use a `useEffect` to handle this logic.
         if (firstNewBatteryId && !activeBatteryId) {
             setActiveBatteryId(firstNewBatteryId);
-        } else if (!activeBatteryId && Object.keys(updatedData).length > 0) {
-            setActiveBatteryId(Object.keys(updatedData)[0]);
         }
+
+        // Trigger chart info updates after state has settled
+        updatedBatteryIds.forEach(id => {
+            updateChartInfo(id, updatedData[id].history);
+        });
         
         return updatedData;
     });
 
-    for (const [batteryId] of newDataByBattery.entries()) {
-        setDataByBattery(currentData => {
-            const batteryState = currentData[batteryId];
-            if (!batteryState) return currentData; // Should not happen
-
-            const fullHistory = batteryState.history;
-            if (fullHistory.length === 0) return currentData;
-
-            const insights = fullHistory.map(dp => `Data point at ${new Date(dp.timestamp).toLocaleString()}: ${Object.entries(dp).filter(([k]) => k !== 'timestamp').map(([k,v]) => `${k}: ${v}`).join(', ')}. `).join('');
-            const metrics = Object.keys(fullHistory.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp');
-
-            if (metrics.length > 0) {
-                (async () => {
-                    const result = await getChartInfo(metrics, "all time", insights);
-                    if (result.success && result.data) {
-                        setDataByBattery(prev => {
-                            if (!prev[batteryId] || JSON.stringify(prev[batteryId].chartInfo) === JSON.stringify(result.data)) {
-                                return prev;
-                            }
-                            return {
-                                ...prev,
-                                [batteryId]: {
-                                    ...prev[batteryId],
-                                    chartInfo: result.data
-                                }
-                            }
-                        });
-                    }
-                })();
-            }
-            return currentData; // Return current state synchronously
-        });
-    }
-  };
+  }, [activeBatteryId, toast, updateChartInfo]);
   
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
@@ -238,9 +240,17 @@ export default function Home() {
 
   const latestDataPoint = dataHistory.length > 0 ? dataHistory[dataHistory.length - 1] : null;
   
-  const availableMetrics = dataHistory.length > 0 
-    ? Object.keys(dataHistory.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp')
-    : Object.keys(initialMetrics);
+  const availableMetrics = useMemo(() => {
+    if (dataHistory.length > 0) {
+      const allKeys = dataHistory.reduce((acc, curr) => {
+        Object.keys(curr).forEach(key => acc.add(key));
+        return acc;
+      }, new Set<string>());
+      allKeys.delete('timestamp');
+      return Array.from(allKeys);
+    }
+    return Object.keys(initialMetrics);
+  }, [dataHistory]);
     
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -262,7 +272,7 @@ export default function Home() {
                         <CardTitle className="text-lg">Select Battery</CardTitle>
                     </CardHeader>
                     <CardContent className="p-4 pt-0">
-                        <Tabs value={activeBatteryId} onValueChange={setActiveBatteryId}>
+                        <Tabs value={activeBatteryId || ""} onValueChange={setActiveBatteryId}>
                             <TabsList>
                                 {batteryIds.map(id => (
                                     <TabsTrigger key={id} value={id}>{id}</TabsTrigger>
@@ -280,7 +290,7 @@ export default function Home() {
               setTimeRange={setTimeRange}
             />
             <ChartDisplay
-              batteryId={activeBatteryId}
+              batteryId={activeBatteryId || ""}
               data={dataHistory}
               selectedMetrics={selectedMetrics}
               timeRange={timeRange}

@@ -40,8 +40,12 @@ export function ChartDisplay({
   isLoading,
 }: ChartDisplayProps) {
 
+  const sortedData = useMemo(() => {
+    return [...data].sort((a, b) => a.timestamp - b.timestamp);
+  }, [data]);
+
   const filteredData = useMemo(() => {
-    if (timeRange === 'all') return data;
+    if (timeRange === 'all') return sortedData;
     const now = Date.now();
     let startTime: number;
 
@@ -59,10 +63,10 @@ export function ChartDisplay({
         startTime = subMonths(now, 1).getTime();
         break;
       default:
-        return data;
+        return sortedData;
     }
-    return data.filter(d => d.timestamp >= startTime);
-  }, [data, timeRange]);
+    return sortedData.filter(d => d.timestamp >= startTime);
+  }, [sortedData, timeRange]);
   
   const activeMetrics = useMemo(() => Object.keys(selectedMetrics).filter(k => selectedMetrics[k]), [selectedMetrics]);
   
@@ -100,7 +104,7 @@ export function ChartDisplay({
     return (
         <Card>
             <CardHeader>
-                <CardTitle>4. Trend Chart</CardTitle>
+                <CardTitle>Trend Chart</CardTitle>
                 <CardDescription>Your data visualization will appear here.</CardDescription>
             </CardHeader>
             <CardContent className="flex aspect-video w-full items-center justify-center rounded-lg border-dashed border-2 bg-muted/50">
@@ -160,6 +164,7 @@ export function ChartDisplay({
                         stroke={chartConfig[metric].color}
                         strokeWidth={2}
                         dot={false}
+                        connectNulls // This will connect line segments across null values.
                         animationDuration={300}
                     />
                 ))}
