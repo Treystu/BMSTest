@@ -15,4 +15,5 @@ export type SelectedMetrics = {
 export type ExtractionResult = {
   batteryId: string;
   extractedData: string;
+  timestamp: number;
 };

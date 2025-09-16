@@ -54,7 +54,7 @@ export default function Home() {
     const newDataByBattery = new Map<string, { newPoints: DataPoint[], allInsights: string }>();
 
     for (const data of successfulExtractions) {
-        const { batteryId, extractedData } = data;
+        const { batteryId, extractedData, timestamp } = data;
         
         if (!newDataByBattery.has(batteryId)) {
             newDataByBattery.set(batteryId, { newPoints: [], allInsights: '' });
@@ -64,9 +64,8 @@ export default function Home() {
 
         try {
             const parsedData = JSON.parse(extractedData);
-            const timestamp = parsedData.timestamp || parsedData.Timestamp || parsedData.time || parsedData.Time || new Date().toISOString();
             
-            const dataPoint: DataPoint = { timestamp: new Date(timestamp).getTime() };
+            const dataPoint: DataPoint = { timestamp };
 
             const processObject = (obj: any, prefix = '') => {
                 for (const key in obj) {
@@ -78,7 +77,9 @@ export default function Home() {
                     } else {
                         const value = parseFloat(obj[key]);
                         if(!isNaN(value)) {
-                            dataPoint[newKey.toLowerCase()] = value;
+                            // Sanitize key: lowercase and remove special characters
+                            const sanitizedKey = newKey.toLowerCase().replace(/[^a-z0-9]/gi, '');
+                            dataPoint[sanitizedKey] = value;
                         }
                     }
                 }

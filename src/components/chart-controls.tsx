@@ -23,6 +23,16 @@ const metricIcons: { [key: string]: React.ReactNode } = {
   soc: <Battery className="h-4 w-4" />,
 };
 
+// Function to insert spaces before capital letters for readability
+const formatMetricName = (name: string) => {
+    return name
+        .replace(/([A-Z])/g, ' $1') // insert a space before all caps
+        .replace(/_/g, ' ') // replace underscores with spaces
+        .replace(/^./, (str) => str.toUpperCase()) // capitalize the first letter
+        .trim();
+};
+
+
 const getMetricIcon = (metric: string) => {
     const lowerMetric = metric.toLowerCase();
     for (const key in metricIcons) {
@@ -66,7 +76,7 @@ export function ChartControls({
                   className="flex items-center gap-2 font-normal capitalize cursor-pointer"
                 >
                   {getMetricIcon(metric)}
-                  {metric.replace(/_/g, ' ')}
+                  {formatMetricName(metric)}
                 </Label>
               </div>
             ))}

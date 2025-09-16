@@ -9,6 +9,10 @@ import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/app/actions';
 import type { ExtractionResult } from '@/lib/types';
 
+type ImageFile = {
+    preview: string;
+    name: string;
+}
 
 type ImageUploaderProps = {
   onUploadComplete: (results: { success: boolean; data?: ExtractionResult; error?: string }[]) => void;
@@ -17,7 +21,7 @@ type ImageUploaderProps = {
 };
 
 export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: ImageUploaderProps) {
-  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -25,7 +29,7 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      if (imagePreviews.length + files.length > 10) {
+      if (imageFiles.length + files.length > 10) {
         toast({
           title: 'Too many files',
           description: 'You can upload a maximum of 10 files at a time.',
@@ -34,13 +38,13 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
         return;
       }
 
-      const newPreviews: string[] = [];
+      const newFiles: ImageFile[] = [];
       for (const file of Array.from(files)) {
         const reader = new FileReader();
         reader.onloadend = () => {
-          newPreviews.push(reader.result as string);
-          if (newPreviews.length === files.length) {
-            setImagePreviews(prev => [...prev, ...newPreviews].slice(0, 10));
+          newFiles.push({ preview: reader.result as string, name: file.name });
+          if (newFiles.length === files.length) {
+            setImageFiles(prev => [...prev, ...newFiles].slice(0, 10));
           }
         };
         reader.readAsDataURL(file);
@@ -53,7 +57,7 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
   };
 
   const handleClearImage = (index: number) => {
-    setImagePreviews(previews => previews.filter((_, i) => i !== index));
+    setImageFiles(files => files.filter((_, i) => i !== index));
     if (fileInputRef.current) {
         const dt = new DataTransfer();
         const remainingFiles = Array.from(fileInputRef.current.files!).filter((_,i) => i !== index);
@@ -63,14 +67,14 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
   };
   
   const handleClearAll = () => {
-    setImagePreviews([]);
+    setImageFiles([]);
     if (fileInputRef.current) {
         fileInputRef.current.value = "";
     }
   }
 
   const handleSubmit = () => {
-    if (imagePreviews.length === 0) {
+    if (imageFiles.length === 0) {
       toast({
         title: 'No Images Selected',
         description: 'Please select one or more image files to extract data from.',
@@ -81,7 +85,7 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
 
     setIsLoading(true);
     startTransition(async () => {
-      const results = await Promise.all(imagePreviews.map(preview => processImage(preview)));
+      const results = await Promise.all(imageFiles.map(file => processImage(file.preview, file.name)));
       
       const successfulExtractions = results.filter(r => r.success);
       const failedExtractions = results.filter(r => !r.success);
@@ -115,12 +119,12 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="relative w-full border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50 overflow-hidden p-2 min-h-[150px]">
-          {imagePreviews.length > 0 ? (
+          {imageFiles.length > 0 ? (
              <div className="grid grid-cols-3 md:grid-cols-5 gap-2 w-full">
-                {imagePreviews.map((preview, index) => (
+                {imageFiles.map((file, index) => (
                     <div key={index} className="relative aspect-square">
                         <Image
-                            src={preview}
+                            src={file.preview}
                             alt={`Image preview ${index + 1}`}
                             fill
                             className="object-contain rounded-md"
@@ -157,15 +161,15 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
               <Upload className="mr-2 h-4 w-4" />
               Choose Images
             </Button>
-            <Button onClick={handleClearAll} variant="ghost" disabled={imagePreviews.length === 0}>
+            <Button onClick={handleClearAll} variant="ghost" disabled={imageFiles.length === 0}>
                 <Trash2 className="mr-2 h-4 w-4" /> Clear
             </Button>
         </div>
-         <Button onClick={handleSubmit} disabled={isLoading || isPending || imagePreviews.length === 0} className="w-full">
+         <Button onClick={handleSubmit} disabled={isLoading || isPending || imageFiles.length === 0} className="w-full">
               {isLoading || isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
-              {isLoading || isPending ? `Extracting ${imagePreviews.length} images...` : `Extract Data from ${imagePreviews.length} Images`}
+              {isLoading || isPending ? `Extracting ${imageFiles.length} images...` : `Extract Data from ${imageFiles.length} Images`}
         </Button>
       </CardContent>
     </Card>
