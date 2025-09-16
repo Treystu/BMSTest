@@ -158,7 +158,7 @@ export function ChartControls({
         ) : (
             <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">
-                    Day-over-day comparison controls are located with the chart below.
+                    This shows aggregated hourly statistics across all available data.
                 </p>
             </div>
         )}
