@@ -25,7 +25,7 @@ const metricIcons: { [key: string]: React.ReactNode } = {
   soc: <Battery className="h-4 w-4" />,
 };
 
-const standardMetrics = ['soc', 'voltage', 'current', 'capacity', 'temperature'];
+const coreMetrics = ['soc', 'voltage', 'current', 'capacity'];
 
 const formatMetricName = (name: string) => {
     return name
@@ -78,18 +78,16 @@ export function ChartControls({
     const extra = new Set<string>();
     
     availableMetrics.forEach(m => {
-        let isMain = false;
-        for (const sm of standardMetrics) {
-            if (m === sm) {
-                main.add(m);
-                isMain = true;
-                break;
-            }
-        }
-        if (!isMain) {
+        if (coreMetrics.includes(m)) {
+            main.add(m);
+        } else {
             extra.add(m);
         }
     });
+
+    // Ensure core metrics are always available for selection even if not in data yet
+    coreMetrics.forEach(cm => main.add(cm));
+
 
     return { mainMetrics: Array.from(main).sort(), extraMetrics: Array.from(extra).sort() };
   }, [availableMetrics]);
@@ -112,7 +110,7 @@ export function ChartControls({
           {extraMetrics.length > 0 && (
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="item-1">
-                <AccordionTrigger>Extra extracted metrics</AccordionTrigger>
+                <AccordionTrigger>Extra Metrics</AccordionTrigger>
                 <AccordionContent>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-2">
                     {extraMetrics.map((metric) => (

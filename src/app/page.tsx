@@ -22,14 +22,16 @@ const initialMetrics: SelectedMetrics = {
 };
 
 const sanitizeMetricKey = (key: string): string => {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey === 'voltage') return 'voltage'; // Exact match
-    if (lowerKey.includes('soc')) return 'soc';
-    if (lowerKey.includes('volt')) return 'voltage'; // Broad match for other variations
-    if (lowerKey.includes('curr')) return 'current';
-    if (lowerKey.includes('cap')) return 'capacity';
+    const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/gi, ''); // Sanitize completely
+    
+    if (lowerKey === 'voltage') return 'voltage';
+    if (lowerKey === 'soc' || lowerKey === 'stateofcharge') return 'soc';
+    if (lowerKey === 'current') return 'current';
+    if (lowerKey.includes('capacity') || lowerKey.includes('cap')) return 'capacity';
     if (lowerKey.includes('temp')) return 'temperature';
-    return lowerKey.replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
+
+    // Fallback for other keys to make them valid identifiers
+    return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
 };
 
 
