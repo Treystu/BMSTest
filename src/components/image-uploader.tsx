@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Upload, X, Loader2, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/app/actions';
 import type { ExtractionResult } from '@/lib/types';
@@ -15,13 +16,14 @@ type ImageFile = {
 }
 
 type ImageUploaderProps = {
-  onUploadComplete: (results: { success: boolean; data?: ExtractionResult; error?: string }[]) => void;
+  onNewDataPoint: (result: ExtractionResult) => void;
   setIsLoading: (isLoading: boolean) => void;
   isLoading: boolean;
 };
 
-export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: ImageUploaderProps) {
+export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: ImageUploaderProps) {
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
+  const [progress, setProgress] = useState(0);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -29,7 +31,7 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      if (imageFiles.length + files.length > 20) { // Increased limit
+      if (imageFiles.length + files.length > 20) {
         toast({
           title: 'Too many files',
           description: 'You can upload a maximum of 20 files at a time.',
@@ -83,32 +85,33 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
       return;
     }
 
-    console.log(`[ImageUploader] Submitting ${imageFiles.length} images for processing.`);
-    imageFiles.forEach(f => console.log(`  - ${f.name}`));
-
     setIsLoading(true);
+    setProgress(0);
     startTransition(async () => {
-      const results = await Promise.all(imageFiles.map(file => processImage(file.preview, file.name)));
+      let successfulExtractions = 0;
+      let failedExtractions = 0;
+
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
+        console.log(`[ImageUploader] Processing image ${i + 1}/${imageFiles.length}: ${file.name}`);
+        const result = await processImage(file.preview, file.name);
+
+        if (result.success && result.data) {
+          onNewDataPoint(result.data);
+          successfulExtractions++;
+          console.log(`[ImageUploader] Success for ${file.name}`);
+        } else {
+          failedExtractions++;
+          console.error(`[ImageUploader] Failure for ${file.name}:`, result.error);
+        }
+        setProgress(((i + 1) / imageFiles.length) * 100);
+      }
       
-      const successfulExtractions = results.filter(r => r.success);
-      const failedExtractions = results.filter(r => !r.success);
-
-      if (successfulExtractions.length > 0) {
-        onUploadComplete(results);
-        toast({
-          title: 'Data Extraction Complete',
-          description: `${successfulExtractions.length} out of ${results.length} images processed successfully.`,
-        });
-      }
-
-      if (failedExtractions.length > 0) {
-        toast({
-          title: 'Some Extractions Failed',
-          description: `${failedExtractions.length} images could not be processed. Check console for details.`,
-          variant: 'destructive',
-        });
-        console.error("Failed extractions:", failedExtractions);
-      }
+      toast({
+        title: 'Data Extraction Complete',
+        description: `${successfulExtractions} out of ${imageFiles.length} images processed. ${failedExtractions > 0 ? `${failedExtractions} failed.` : ''}`,
+        variant: failedExtractions > 0 ? 'destructive' : 'default',
+      });
       
       handleClearAll();
       setIsLoading(false);
@@ -161,11 +164,11 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
           multiple
         />
         <div className="flex flex-col sm:flex-row gap-2">
-            <Button onClick={handleUploadClick} variant="outline" className="w-full">
+            <Button onClick={handleUploadClick} variant="outline" className="w-full" disabled={isLoading || isPending}>
               <Upload className="mr-2 h-4 w-4" />
               Choose Images
             </Button>
-            <Button onClick={handleClearAll} variant="ghost" disabled={imageFiles.length === 0}>
+            <Button onClick={handleClearAll} variant="ghost" disabled={isLoading || isPending || imageFiles.length === 0}>
                 <Trash2 className="mr-2 h-4 w-4" /> Clear
             </Button>
         </div>
@@ -175,6 +178,12 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
               ) : null}
               {isLoading || isPending ? `Extracting ${imageFiles.length} images...` : `Extract Data from ${imageFiles.length} Images`}
         </Button>
+        {(isLoading || isPending) && (
+            <div className="space-y-2">
+                <Progress value={progress} />
+                <p className="text-sm text-muted-foreground text-center">Processing... {Math.round(progress)}%</p>
+            </div>
+        )}
       </CardContent>
     </Card>
   );
