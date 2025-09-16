@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult } from "@/lib/types";
+import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap, BatteryData } from "@/lib/types";
 import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
 import { DataDisplay } from "@/components/data-display";
@@ -21,11 +21,6 @@ const initialMetrics: SelectedMetrics = {
   capacity: true,
   temperature: true,
 };
-
-type BatteryData = {
-  history: DataPoint[];
-  chartInfo: ChartInfo | null;
-}
 
 const averageDataPoints = (points: DataPoint[]): DataPoint[] => {
     if (points.length < 2) {
@@ -95,7 +90,7 @@ const sanitizeMetricKey = (key: string): string => {
 
 
 export default function Home() {
-  const [dataByBattery, setDataByBattery] = useState<Record<string, BatteryData>>({});
+  const [dataByBattery, setDataByBattery] = useState<BatteryDataMap>({});
   const [activeBatteryId, setActiveBatteryId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState<SelectedMetrics>(initialMetrics);
@@ -208,6 +203,28 @@ export default function Home() {
         });
     }
   }, [toast, activeBatteryId]);
+
+  const handleMultipleDataPoints = useCallback((newData: BatteryDataMap) => {
+    setDataByBattery(prevData => {
+        const mergedData = { ...prevData };
+        for (const batteryId in newData) {
+            const newHistory = newData[batteryId].history || [];
+            const existingHistory = mergedData[batteryId]?.history || [];
+            const combined = [...existingHistory, ...newHistory];
+            mergedData[batteryId] = {
+                ...mergedData[batteryId],
+                ...newData[batteryId],
+                history: averageDataPoints(combined)
+            }
+            setLastUpdatedBattery(batteryId);
+        }
+        return mergedData;
+    });
+
+    if (!activeBatteryId && Object.keys(newData).length > 0) {
+        setActiveBatteryId(Object.keys(newData)[0]);
+    }
+  }, [activeBatteryId]);
   
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
@@ -241,9 +258,11 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1 flex flex-col gap-6">
             <ImageUploader 
-              onNewDataPoint={handleNewDataPoint} 
+              onNewDataPoint={handleNewDataPoint}
+              onMultipleDataPoints={handleMultipleDataPoints}
               setIsLoading={setIsLoading}
               isLoading={isLoading}
+              dataByBattery={dataByBattery}
             />
             <DataDisplay data={latestDataPoint} />
           </div>

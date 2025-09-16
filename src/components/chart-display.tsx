@@ -153,7 +153,16 @@ export function ChartDisplay({
                 <YAxis />
                 <ChartTooltip
                     cursor={false}
-                    content={<ChartTooltipContent indicator="line" />}
+                    content={<ChartTooltipContent 
+                        indicator="line" 
+                        labelFormatter={(label, payload) => {
+                            if (payload && payload.length > 0) {
+                                const timestamp = payload[0].payload.timestamp;
+                                return format(new Date(timestamp), "PPpp");
+                            }
+                            return label;
+                        }}
+                    />}
                 />
                  <ChartLegend content={<ChartLegendContent />} />
                 {Object.keys(chartConfig).map((metric) => (

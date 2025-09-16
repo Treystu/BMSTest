@@ -17,3 +17,10 @@ export type ExtractionResult = {
   extractedData: string;
   timestamp: number;
 };
+
+export type BatteryData = {
+  history: DataPoint[];
+  chartInfo: ChartInfo | null;
+}
+
+export type BatteryDataMap = Record<string, BatteryData>;

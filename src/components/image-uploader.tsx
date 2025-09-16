@@ -2,13 +2,13 @@
 
 import { useState, useRef, useTransition } from 'react';
 import Image from 'next/image';
-import { Upload, X, Loader2, Trash2 } from 'lucide-react';
+import { Upload, X, Loader2, Trash2, Download, UploadCloud } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/app/actions';
-import type { ExtractionResult } from '@/lib/types';
+import type { ExtractionResult, BatteryDataMap } from '@/lib/types';
 import JSZip from 'jszip';
 
 type ImageFile = {
@@ -18,19 +18,28 @@ type ImageFile = {
 
 type ImageUploaderProps = {
   onNewDataPoint: (result: ExtractionResult) => void;
+  onMultipleDataPoints: (data: BatteryDataMap) => void;
   setIsLoading: (isLoading: boolean) => void;
   isLoading: boolean;
+  dataByBattery: BatteryDataMap;
 };
 
 const isImageFile = (fileName: string) => {
     return /\.(jpe?g|png|webp)$/i.test(fileName);
 };
 
-export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: ImageUploaderProps) {
+export function ImageUploader({ 
+    onNewDataPoint, 
+    onMultipleDataPoints,
+    setIsLoading, 
+    isLoading,
+    dataByBattery
+}: ImageUploaderProps) {
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
   const [progress, setProgress] = useState(0);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const jsonInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,6 +113,10 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
+  
+  const handleJsonUploadClick = () => {
+    jsonInputRef.current?.click();
+  }
 
   const handleClearImage = (index: number) => {
     setImageFiles(files => files.filter((_, i) => i !== index));
@@ -112,6 +125,72 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
   const handleClearAll = () => {
     setImageFiles([]);
   }
+
+  const handleDownloadData = () => {
+    if (Object.keys(dataByBattery).length === 0) {
+      toast({
+        title: "No Data to Download",
+        description: "Upload and process some images first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const dataStr = JSON.stringify(dataByBattery, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `insight-extractor-data-${new Date().toISOString()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    toast({
+        title: "Data Downloaded",
+        description: "Your extracted data has been saved as a JSON file."
+    });
+  };
+
+  const handleJsonFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result;
+        if (typeof text !== 'string') {
+          throw new Error("File could not be read.");
+        }
+        const parsedData = JSON.parse(text);
+        
+        // Basic validation
+        if (typeof parsedData !== 'object' || parsedData === null) {
+            throw new Error("Invalid JSON format.");
+        }
+        
+        onMultipleDataPoints(parsedData);
+
+        toast({
+          title: "Data Imported Successfully",
+          description: "The data from your JSON file has been loaded.",
+        });
+
+      } catch (error: any) {
+        toast({
+          title: "Failed to Import Data",
+          description: `Error reading JSON file: ${error.message}`,
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+
+    if (jsonInputRef.current) jsonInputRef.current.value = "";
+  };
+
 
   const handleSubmit = () => {
     if (imageFiles.length === 0) {
@@ -165,8 +244,8 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
   return (
     <Card>
       <CardHeader>
-        <CardTitle>1. Upload Images</CardTitle>
-        <CardDescription>Upload images or a single ZIP file. The app will automatically identify the battery and sort the data.</CardDescription>
+        <CardTitle>1. Upload Data</CardTitle>
+        <CardDescription>Upload images/ZIP to extract data, or upload a previously saved JSON data file.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="relative w-full border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50 overflow-hidden p-2 min-h-[150px]">
@@ -194,8 +273,8 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
              </div>
           ) : (
             <div className="text-center text-muted-foreground p-4">
-              <Upload className="mx-auto h-12 w-12" />
-              <p className="mt-2 text-sm">Click button below to upload images or a ZIP</p>
+              <UploadCloud className="mx-auto h-12 w-12" />
+              <p className="mt-2 text-sm">Choose images, a ZIP file, or upload a JSON file</p>
             </div>
           )}
         </div>
@@ -207,13 +286,21 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
           accept="image/png, image/jpeg, image/webp, application/zip"
           multiple
         />
-        <div className="flex flex-col sm:flex-row gap-2">
+        <input
+            type="file"
+            ref={jsonInputRef}
+            onChange={handleJsonFileChange}
+            className="hidden"
+            accept="application/json"
+        />
+        <div className="grid grid-cols-2 gap-2">
             <Button onClick={handleUploadClick} variant="outline" className="w-full" disabled={isLoading || isPending}>
               <Upload className="mr-2 h-4 w-4" />
-              Choose Files or ZIP
+              Images / ZIP
             </Button>
-            <Button onClick={handleClearAll} variant="ghost" disabled={isLoading || isPending || imageFiles.length === 0}>
-                <Trash2 className="mr-2 h-4 w-4" /> Clear
+            <Button onClick={handleJsonUploadClick} variant="outline" className="w-full" disabled={isLoading || isPending}>
+              <UploadCloud className="mr-2 h-4 w-4" />
+              Upload JSON
             </Button>
         </div>
          <Button onClick={handleSubmit} disabled={isLoading || isPending || imageFiles.length === 0} className="w-full">
@@ -228,6 +315,14 @@ export function ImageUploader({ onNewDataPoint, setIsLoading, isLoading }: Image
                 <p className="text-sm text-muted-foreground text-center">Processing... {Math.round(progress)}%</p>
             </div>
         )}
+        <div className="flex flex-col sm:flex-row gap-2">
+            <Button onClick={handleDownloadData} variant="secondary" className="w-full" disabled={isLoading || isPending || Object.keys(dataByBattery).length === 0}>
+                <Download className="mr-2 h-4 w-4" /> Download Data as JSON
+            </Button>
+            <Button onClick={handleClearAll} variant="ghost" disabled={isLoading || isPending || imageFiles.length === 0}>
+                <Trash2 className="mr-2 h-4 w-4" /> Clear Images
+            </Button>
+        </div>
       </CardContent>
     </Card>
   );
