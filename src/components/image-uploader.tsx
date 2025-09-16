@@ -108,10 +108,10 @@ export function ImageUploader({
                 const zipEntry = zip.files[relativePath];
                 if (!zipEntry.dir && isImageFile(zipEntry.name)) {
                     const blob = await zipEntry.async('blob');
-                    // Ensure the file has a proper image MIME type
+                    // Force a valid image MIME type if the original is generic
                     const imageType = blob.type === 'application/octet-stream' ? 'image/png' : blob.type;
-                    const file = new File([blob], zipEntry.name, { type: imageType });
-                    newRawFiles.push({ file, name: zipEntry.name });
+                    const file = new File([blob], relativePath, { type: imageType });
+                    newRawFiles.push({ file, name: relativePath });
                 }
             }
         } catch (error) {
@@ -125,9 +125,14 @@ export function ImageUploader({
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onloadend = () => {
+                let dataUri = reader.result as string;
+                // Forcefully correct the MIME type in the data URI itself if it's wrong
+                if (dataUri.startsWith('data:application/octet-stream')) {
+                  dataUri = dataUri.replace('data:application/octet-stream', 'data:image/png');
+                }
                 resolve({ 
                     id: `${name}-${new Date().getTime()}`,
-                    preview: reader.result as string, 
+                    preview: dataUri,
                     name: name,
                     status: 'queued' 
                 });
@@ -376,5 +381,3 @@ export function ImageUploader({
     </>
   );
 }
-
-    
