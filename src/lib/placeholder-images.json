@@ -1,3 +1,10 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "bms-dashboard",
+      "description": "A close-up of a battery management system dashboard showing various metrics.",
+      "imageUrl": "https://picsum.photos/seed/bms1/800/600",
+      "imageHint": "battery dashboard"
+    }
+  ]
 }
