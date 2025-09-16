@@ -82,8 +82,8 @@ export function ChartDisplay({
     return { leftMetrics: left, rightMetrics: right };
   }, [activeMetrics]);
 
-  const processedData = useMemo(() => {
-    if (!data || data.length === 0) return [];
+  const { processedData, brushFriendlyData } = useMemo(() => {
+    if (!data || data.length === 0) return { processedData: [], brushFriendlyData: [] };
     
     // 1. Filter by date range
     let timeFilteredData: DataPoint[];
@@ -95,20 +95,22 @@ export function ChartDisplay({
         default: timeFilteredData = data;
     }
     
-    if (timeFilteredData.length < 2) return timeFilteredData;
+    if (timeFilteredData.length < 2) {
+      return { processedData: timeFilteredData, brushFriendlyData: timeFilteredData };
+    }
 
-    // 2. Sort data just in case it's not
-    const sortedData = timeFilteredData.sort((a, b) => a.timestamp - b.timestamp);
+    // 2. Sort data chronologically - THIS IS CRITICAL
+    const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
 
-    // 3. Insert nulls for large time gaps
+    // 3. Insert nulls for large time gaps to create visual breaks in the line
     const dataWithGaps: ProcessedDataPoint[] = [sortedData[0]];
     for (let i = 1; i < sortedData.length; i++) {
         const prevPoint = sortedData[i-1];
         const currentPoint = sortedData[i];
         
         if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-            // Create a gap point. Recharts will not connect lines over a null.
-            const gapPoint = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
+            // Create a gap point. Recharts will not connect lines over a null value when connectNulls is false.
+            const gapPoint: ProcessedDataPoint = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
             activeMetrics.forEach(metric => {
                 gapPoint[metric] = null;
             });
@@ -116,8 +118,11 @@ export function ChartDisplay({
         }
         dataWithGaps.push(currentPoint);
     }
+    
+    // 4. Create a separate data array for the brush that does NOT contain nulls
+    const brushData = sortedData;
 
-    return dataWithGaps;
+    return { processedData: dataWithGaps, brushFriendlyData: brushData };
   }, [data, dateRange, activeMetrics]);
   
   const chartConfig = useMemo(() => {
@@ -135,18 +140,19 @@ export function ChartDisplay({
     if (range?.startIndex === undefined || range?.endIndex === undefined) {
       onBrushChange(null);
     } else {
-      const allData = data;
-      // We need to map brush range from processedData back to the original `data` array
-      const brushDataSubset = processedData.slice(range.startIndex, range.endIndex + 1).filter(d => d !== null && d[activeMetrics[0]] !== null);
+      // The brush provides indices relative to its own data (brushFriendlyData)
+      // We need to map these back to the original `data` array to find the correct timestamps.
+      const brushSubset = brushFriendlyData.slice(range.startIndex, range.endIndex + 1);
 
-      if(brushDataSubset.length > 0) {
-        const firstTimestamp = brushDataSubset[0]!.timestamp;
-        const lastTimestamp = brushDataSubset[brushDataSubset.length - 1]!.timestamp;
+      if(brushSubset.length > 0) {
+        const firstTimestamp = brushSubset[0]!.timestamp;
+        const lastTimestamp = brushSubset[brushSubset.length - 1]!.timestamp;
         
-        const startIndexInOriginal = allData.findIndex(d => d.timestamp >= firstTimestamp);
+        // Find the corresponding indices in the original, unfiltered `data` array.
+        const startIndexInOriginal = data.findIndex(d => d.timestamp >= firstTimestamp);
         let endIndexInOriginal = -1;
-        for (let i = allData.length - 1; i >= 0; i--) {
-            if (allData[i].timestamp <= lastTimestamp) {
+        for (let i = data.length - 1; i >= 0; i--) {
+            if (data[i].timestamp <= lastTimestamp) {
                 endIndexInOriginal = i;
                 break;
             }
@@ -162,13 +168,14 @@ export function ChartDisplay({
         onBrushChange(null);
       }
     }
-  }, [onBrushChange, processedData, data, activeMetrics]);
+  }, [onBrushChange, brushFriendlyData, data]);
 
   const CustomTooltipContent = (props: any) => {
     const { active, payload, label } = props;
     if (active && payload && payload.length) {
-        const dataPoint = payload[0].payload;
-        if(dataPoint[payload[0].dataKey] === null) return null; // Don't show tooltip for gaps
+        // Check the first payload item. If it's null, we're in a gap, so don't show the tooltip.
+        if(payload[0].payload[payload[0].dataKey] === null) return null; 
+
         return (
             <div className="p-2 bg-background border rounded-md shadow-lg text-sm">
                 <p className="font-bold">{getFormattedTick(label, "MMM d, yyyy, h:mm:ss a")}</p>
@@ -244,7 +251,9 @@ export function ChartDisplay({
                 <XAxis
                     dataKey="timestamp"
                     tickFormatter={(value, index) => {
+                      // Don't render a tick for our null-gap data points
                       if (processedData[index]?.[activeMetrics[0]] === null) return "";
+
                       const visibleRange = processedData.length > 1 ? processedData[processedData.length-1].timestamp - processedData[0].timestamp : 0;
                       const oneDay = 24 * 60 * 60 * 1000;
                       const format = visibleRange <= oneDay * 2 ? 'HH:mm' : 'MMM d';
@@ -261,7 +270,7 @@ export function ChartDisplay({
                     content={<CustomTooltipContent />}
                 />
                 <Legend />
-                {leftMetrics.map((metric) => (
+                {leftMetrics.map((metric, index) => (
                      <Line
                         key={metric}
                         yAxisId="left"
@@ -293,9 +302,9 @@ export function ChartDisplay({
                   stroke="hsl(var(--primary))"
                   tickFormatter={(value) => getFormattedTick(value, 'MMM d')}
                   onChange={handleBrushChange}
+                  data={brushFriendlyData} // Use the clean data for the brush
                   startIndex={undefined}
                   endIndex={undefined}
-                  data={processedData.filter(d => d[activeMetrics[0]] !== null)}
                 />
             </LineChart>
         </ChartContainer>
