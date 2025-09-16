@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, useCallback } from 'react';
@@ -286,5 +285,3 @@ export function ChartDisplay({
     </Card>
   );
 }
-
-    
