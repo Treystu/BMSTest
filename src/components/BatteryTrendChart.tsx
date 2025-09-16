@@ -1,8 +1,7 @@
-
 "use client";
 
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ResponsiveContainer, Curve
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ResponsiveContainer
 } from 'recharts';
 import { useMemo } from 'react';
 import type { ProcessedDataPoint, SelectedMetrics } from '@/lib/types';
@@ -73,66 +72,6 @@ const CustomTooltipContent = ({ active, payload, label }: any) => {
     return null;
 };
 
-// Custom line renderer to handle dynamic thickness
-const CustomLine = (props: any) => {
-    const { points, dataKey } = props;
-    
-    if (!points || points.length === 0) {
-        return null;
-    }
-    
-    const pathSegments = [];
-    let currentSegmentPoints: any[] = [];
-
-    for (let i = 0; i < points.length; i++) {
-        const point = points[i];
-        const isAggregated = point.payload.type === 'aggregate';
-        
-        // Start a new segment if the type changes or it's the first point
-        if (i === 0) {
-            currentSegmentPoints.push(point);
-            continue;
-        }
-
-        const prevPoint = points[i-1];
-        const wasAggregated = prevPoint.payload.type === 'aggregate';
-        const isGap = point.payload[dataKey] === null || prevPoint.payload[dataKey] === null;
-
-        if (isAggregated !== wasAggregated || isGap) {
-            if (currentSegmentPoints.length > 1) {
-                pathSegments.push(
-                    <Curve
-                        {...props}
-                        key={`seg-${pathSegments.length}`}
-                        points={currentSegmentPoints}
-                        strokeWidth={wasAggregated ? 4 : 2}
-                        className="recharts-line-curve"
-                    />
-                );
-            }
-             currentSegmentPoints = isGap ? [] : [prevPoint, point];
-        } else {
-            currentSegmentPoints.push(point);
-        }
-    }
-    
-    // Render the last segment
-    if (currentSegmentPoints.length > 1) {
-        const isLastSegmentAggregated = currentSegmentPoints[0].payload.type === 'aggregate';
-        pathSegments.push(
-            <Curve
-                {...props}
-                key={`seg-${pathSegments.length}`}
-                points={currentSegmentPoints}
-                strokeWidth={isLastSegmentAggregated ? 4 : 2}
-                className="recharts-line-curve"
-            />
-        );
-    }
-
-    return <g>{pathSegments}</g>;
-};
-
 
 type BatteryTrendChartProps = {
     processedData: ProcessedDataPoint[];
@@ -193,8 +132,8 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
             dataKey={metric}
             stroke={getLineColor(metric)}
             dot={false}
+            strokeWidth={2}
             isAnimationActive={false}
-            content={<CustomLine />}
             connectNulls={false}
           />
         ))}
@@ -207,8 +146,8 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
             dataKey={metric}
             stroke={getLineColor(metric)}
             dot={false}
+            strokeWidth={2}
             isAnimationActive={false}
-            content={<CustomLine />}
             connectNulls={false}
           />
         ))}
