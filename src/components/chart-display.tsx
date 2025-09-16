@@ -188,12 +188,13 @@ export function ChartDisplay({
     } else {
       // Note: We need to map the brush range from the original `data` array, not the one with nulls
       const allData = data;
-      const brushDataSubset = processedData.slice(range.startIndex, range.endIndex + 1).filter(d => d !== null);
+      const brushDataSubset = processedData.slice(range.startIndex, range.endIndex + 1).filter(d => d !== null && !d.isGap);
       if(brushDataSubset.length > 0) {
         const firstTimestamp = brushDataSubset[0]!.timestamp;
         const lastTimestamp = brushDataSubset[brushDataSubset.length - 1]!.timestamp;
         const startIndexInOriginal = allData.findIndex(d => d.timestamp >= firstTimestamp);
-        const endIndexInOriginal = allData.findLastIndex(d => d.timestamp <= lastTimestamp);
+        let endIndexInOriginal = allData.findLastIndex(d => d.timestamp <= lastTimestamp);
+        if (endIndexInOriginal === -1 && allData.length > 0) endIndexInOriginal = allData.length -1;
         onBrushChange({startIndex: startIndexInOriginal, endIndex: endIndexInOriginal});
       } else {
         onBrushChange(null);
@@ -205,6 +206,7 @@ export function ChartDisplay({
     const { active, payload, label } = props;
     if (active && payload && payload.length) {
         const dataPoint = payload[0].payload;
+        if(dataPoint.isGap) return null;
         return (
             <div className="p-2 bg-background border rounded-md shadow-lg text-sm">
                 <p className="font-bold">{getFormattedTick(label, "MMM d, yyyy, h:mm:ss a")}</p>
@@ -326,7 +328,7 @@ export function ChartDisplay({
                   onChange={handleBrushChange}
                   startIndex={undefined}
                   endIndex={undefined}
-                  data={processedData}
+                  data={processedData.filter(d => !d.isGap)}
                 />
             </LineChart>
         </ChartContainer>
