@@ -11,7 +11,8 @@ import { getChartInfo } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { format } from "date-fns";
+import { format as formatInTimeZone } from 'date-fns-tz';
+
 
 const initialMetrics: SelectedMetrics = {
   soc: true,
@@ -33,6 +34,10 @@ const sanitizeMetricKey = (key: string): string => {
     // Fallback for other keys to make them valid identifiers
     return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
 };
+
+const utcFormat = (date: Date | number, fmt: string) => {
+    return formatInTimeZone(date, 'UTC', fmt);
+}
 
 
 export default function Home() {
@@ -228,8 +233,8 @@ export default function Home() {
     });
 
     return {
-        startDate: format(new Date(slicedData[0].timestamp), "PPpp"),
-        endDate: format(new Date(slicedData[slicedData.length - 1].timestamp), "PPpp"),
+        startDate: utcFormat(new Date(slicedData[0].timestamp), "PPpp"),
+        endDate: utcFormat(new Date(slicedData[slicedData.length - 1].timestamp), "PPpp"),
         stats
     };
   }, [brushRange, dataHistory, selectedMetrics, activeBatteryId]);

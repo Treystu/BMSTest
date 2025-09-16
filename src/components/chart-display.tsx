@@ -12,7 +12,9 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Brush } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
-import { subDays, subWeeks, subMonths, format } from 'date-fns';
+import { subDays, subWeeks, subMonths } from 'date-fns';
+import { format as formatInTimeZone } from 'date-fns-tz';
+
 
 export type BrushRange = {
   startIndex?: number;
@@ -36,6 +38,10 @@ const lineColors = [
   "hsl(var(--chart-4))",
   "hsl(var(--chart-5))",
 ];
+
+const utcFormat = (date: Date | number, fmt: string) => {
+    return formatInTimeZone(date, 'UTC', fmt);
+}
 
 export function ChartDisplay({
   batteryId,
@@ -154,9 +160,9 @@ export function ChartDisplay({
                     tickFormatter={(value) => {
                       const date = new Date(value);
                       if (dateRange === '1h' || dateRange === '1d') {
-                        return format(date, 'HH:mm');
+                        return utcFormat(date, 'HH:mm');
                       }
-                      return format(date, 'MMM d');
+                      return utcFormat(date, 'MMM d');
                     }}
                     scale="time"
                     type="number"
@@ -170,7 +176,7 @@ export function ChartDisplay({
                         labelFormatter={(label, payload) => {
                             if (payload && payload.length > 0) {
                                 const timestamp = payload[0].payload.timestamp;
-                                return format(new Date(timestamp), "PPpp");
+                                return utcFormat(new Date(timestamp), "PPpp");
                             }
                             return label;
                         }}
@@ -195,7 +201,7 @@ export function ChartDisplay({
                   stroke="hsl(var(--primary))"
                   tickFormatter={(value) => {
                       const date = new Date(value);
-                      return format(date, 'MMM d');
+                      return utcFormat(date, 'MMM d');
                   }}
                   onChange={handleBrushChange}
                   startIndex={undefined}

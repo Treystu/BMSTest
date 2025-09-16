@@ -22,9 +22,9 @@ function parseTimestampFromFilename(filename: string): number {
     const minute = dt.substring(10, 12);
     const second = dt.substring(12, 14);
     
-    // Construct a date string in ISO 8601 format without timezone info
-    // e.g., "2024-05-20T10:30:00". new Date() will parse this as local time.
-    const dateString = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+    // Construct a date string in ISO 8601 format and specify UTC ('Z')
+    // This treats the parsed time as "gospel" without timezone shifts.
+    const dateString = `${year}-${month}-${day}T${hour}:${minute}:${second}Z`;
     
     const date = new Date(dateString);
 
