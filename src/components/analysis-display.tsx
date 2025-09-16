@@ -1,20 +1,23 @@
 "use client";
 
-import { useState } from 'react';
+import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Loader2, Wand2 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { getBatteryAnalysis } from "@/app/actions";
-import type { DataPoint, BatteryAnalysis } from "@/lib/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from './ui/scroll-area';
+import { formatInTimeZone } from 'date-fns-tz';
+import type { DataPoint } from "@/lib/types";
 
 type AnalysisDisplayProps = {
   batteryId: string | null;
   dataHistory: DataPoint[];
-  analysis: BatteryAnalysis | null;
-  onAnalysisUpdate: (analysis: BatteryAnalysis) => void;
+};
+
+type HourlyData = {
+  hour: number;
+  [day: string]: {
+    currents: number[];
+    socs: number[];
+  } | number;
 };
 
 const formatHour = (hour: number): string => {
@@ -24,100 +27,107 @@ const formatHour = (hour: number): string => {
     return `${displayHour} ${period}`;
 };
 
-export function AnalysisDisplay({ batteryId, dataHistory, analysis, onAnalysisUpdate }: AnalysisDisplayProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const { toast } = useToast();
+const getDayKey = (timestamp: number) => {
+    return formatInTimeZone(new Date(timestamp), 'UTC', 'yyyy-MM-dd');
+};
+const formatDayHeader = (dayKey: string) => {
+    const date = new Date(dayKey + 'T00:00:00Z'); // Treat key as UTC date
+    return formatInTimeZone(date, 'UTC', 'MMM d, yyyy');
+}
 
-  const handleRunAnalysis = async () => {
-    if (!batteryId || dataHistory.length < 2) {
-      toast({
-        title: "Not Enough Data",
-        description: "Need at least two data points to perform an analysis.",
-        variant: "destructive",
-      });
-      return;
+
+export function AnalysisDisplay({ batteryId, dataHistory }: AnalysisDisplayProps) {
+
+  const { dailyData, uniqueDays } = useMemo(() => {
+    if (!dataHistory || dataHistory.length === 0) {
+      return { dailyData: [], uniqueDays: [] };
     }
 
-    setIsAnalyzing(true);
-    try {
-      const result = await getBatteryAnalysis({ history: dataHistory });
-      if (result.success && result.data) {
-        onAnalysisUpdate(result.data);
-        toast({ title: "Analysis Complete", description: "Battery data trends have been analyzed." });
-      } else {
-        toast({
-          title: "Analysis Failed",
-          description: result.error || "An unknown error occurred.",
-          variant: "destructive",
-        });
+    const hourlyBuckets: { [hour: number]: { [day: string]: { currents: number[]; socs: number[] } } } = {};
+    const days = new Set<string>();
+
+    for (let i = 0; i < 24; i++) {
+        hourlyBuckets[i] = {};
+    }
+
+    dataHistory.forEach(dp => {
+      const date = new Date(dp.timestamp);
+      const hour = date.getUTCHours();
+      const dayKey = getDayKey(dp.timestamp);
+
+      days.add(dayKey);
+
+      if (!hourlyBuckets[hour][dayKey]) {
+        hourlyBuckets[hour][dayKey] = { currents: [], socs: [] };
       }
-    } catch (e: any) {
-      toast({
-        title: "Analysis Error",
-        description: e.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
 
+      if (dp.current !== undefined) hourlyBuckets[hour][dayKey].currents.push(dp.current);
+      if (dp.soc !== undefined) hourlyBuckets[hour][dayKey].socs.push(dp.soc);
+    });
+
+    const sortedDays = Array.from(days).sort();
+
+    const finalData: HourlyData[] = [];
+    for (let i = 0; i < 24; i++) {
+      const row: HourlyData = { hour: i };
+      sortedDays.forEach(dayKey => {
+        row[dayKey] = hourlyBuckets[i][dayKey] || { currents: [], socs: [] };
+      });
+      finalData.push(row);
+    }
+    
+    return { dailyData: finalData, uniqueDays: sortedDays };
+
+  }, [dataHistory]);
+  
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Battery Usage Analysis</CardTitle>
+        <CardTitle>Hourly Day-Over-Day Analysis</CardTitle>
         <CardDescription>
-          Analyze hourly trends and day-over-day performance for the selected battery.
+          Average Current (A) and State of Charge (SOC, %) for each hour across different days.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex justify-start">
-          <Button onClick={handleRunAnalysis} disabled={isAnalyzing || !batteryId || dataHistory.length === 0}>
-            {isAnalyzing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Wand2 className="mr-2 h-4 w-4" />
-            )}
-            Run AI Analysis
-          </Button>
-        </div>
-
-        {analysis ? (
-          <div className="space-y-6">
-            <div>
-              <h3 className="font-semibold mb-2">AI Trend Summary</h3>
-              <p className="text-sm text-muted-foreground bg-muted/50 p-4 rounded-lg border">
-                {analysis.dayOverDayTrend}
-              </p>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-2">Hourly Averages</h3>
-                <ScrollArea className="h-72 rounded-md border">
-                    <Table>
-                        <TableHeader className="sticky top-0 bg-background">
-                            <TableRow>
-                            <TableHead className="w-[100px]">Hour</TableHead>
-                            <TableHead>Avg. Current (A)</TableHead>
-                            <TableHead>Avg. SOC (%)</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {analysis.hourlyAverages.map(({ hour, avgCurrent, avgSOC }) => (
-                            <TableRow key={hour}>
-                                <TableCell className="font-medium">{formatHour(hour)} - {formatHour(hour + 1)}</TableCell>
-                                <TableCell>{avgCurrent.toFixed(2)}</TableCell>
-                                <TableCell>{avgSOC.toFixed(2)}</TableCell>
-                            </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </ScrollArea>
-            </div>
-          </div>
+      <CardContent>
+        {dataHistory.length > 1 ? (
+            <ScrollArea className="h-[70vh] w-full rounded-md border">
+              <Table>
+                <TableHeader className="sticky top-0 bg-background z-10">
+                  <TableRow>
+                    <TableHead className="w-[120px] min-w-[120px]">Time</TableHead>
+                    {uniqueDays.map(day => (
+                      <TableHead key={day} className="text-center min-w-[150px]">{formatDayHeader(day)}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dailyData.map(({ hour, ...days }) => (
+                    <TableRow key={hour}>
+                      <TableCell className="font-medium">{formatHour(hour)} - {formatHour(hour+1)}</TableCell>
+                       {uniqueDays.map(dayKey => {
+                            const dayData = days[dayKey] as { currents: number[], socs: number[] };
+                            const avgCurrent = dayData.currents.length > 0
+                                ? (dayData.currents.reduce((a, b) => a + b, 0) / dayData.currents.length).toFixed(2)
+                                : 'N/A';
+                            const avgSOC = dayData.socs.length > 0
+                                ? (dayData.socs.reduce((a, b) => a + b, 0) / dayData.socs.length).toFixed(2)
+                                : 'N/A';
+                            return (
+                                <TableCell key={dayKey} className="text-center">
+                                    <p>{avgCurrent} A</p>
+                                    <p className="text-muted-foreground">{avgSOC} %</p>
+                                </TableCell>
+                            );
+                       })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
         ) : (
           <div className="flex flex-col items-center justify-center text-center p-8 border-2 border-dashed rounded-lg bg-muted/50 min-h-[200px]">
             <p className="text-sm text-muted-foreground">
-              {isAnalyzing ? 'Analyzing data...' : 'Run an analysis to see the results here.'}
+              Not enough data for analysis. Please upload at least two data points from different times.
             </p>
           </div>
         )}
@@ -125,5 +135,3 @@ export function AnalysisDisplay({ batteryId, dataHistory, analysis, onAnalysisUp
     </Card>
   );
 }
-
-    

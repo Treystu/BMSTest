@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap, BatteryAnalysis } from "@/lib/types";
+import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap } from "@/lib/types";
 import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
 import { DataDisplay } from "@/components/data-display";
@@ -85,8 +85,8 @@ export default function Home() {
                   console.log(`[handleGenerateSummary] Successfully got chart info for ${activeBatteryId}`);
                   setDataByBattery(prev => ({
                       ...prev,
-                      [activeBatteryId]: {
-                          ...prev[activeBatteryId],
+                      [activeBatteryId!]: {
+                          ...prev[activeBatteryId!],
                           chartInfo: result.data
                       }
                   }));
@@ -103,18 +103,6 @@ export default function Home() {
           }
       }
   }, [activeBatteryId, dataByBattery, toast]);
-
-  const handleAnalysisUpdate = useCallback((analysis: BatteryAnalysis) => {
-    if (!activeBatteryId) return;
-
-    setDataByBattery(prev => ({
-      ...prev,
-      [activeBatteryId]: {
-        ...prev[activeBatteryId],
-        analysis,
-      }
-    }));
-  }, [activeBatteryId]);
 
   useEffect(() => {
     if (batteryIds.length > 0 && !activeBatteryId) {
@@ -204,7 +192,6 @@ export default function Home() {
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
   const chartInfo = activeBatteryData?.chartInfo || null;
-  const analysis = activeBatteryData?.analysis || null;
 
   const latestDataPoint = useMemo(() => {
     if (dataHistory.length > 0) {
@@ -352,8 +339,6 @@ export default function Home() {
                 <AnalysisDisplay 
                   batteryId={activeBatteryId}
                   dataHistory={dataHistory}
-                  analysis={analysis}
-                  onAnalysisUpdate={handleAnalysisUpdate}
                 />
               </TabsContent>
             </Tabs>
@@ -363,5 +348,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
