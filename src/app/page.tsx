@@ -34,11 +34,6 @@ const sanitizeMetricKey = (key: string): string => {
     return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
 };
 
-const utcFormat = (date: Date | number, fmt: string) => {
-    return formatInTimeZone(date, 'UTC', fmt);
-}
-
-
 export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<BatteryDataMap>({});
   const [activeBatteryId, setActiveBatteryId] = useState<string | null>(null);
@@ -64,7 +59,7 @@ export default function Home() {
               if (result.success && result.data) {
                   console.log(`[updateChartInfo] Successfully got chart info for ${batteryId}`);
                   setDataByBattery(prev => {
-                      if (!prev[batteryId] || JSON.stringify(prev[batteryId].chartInfo) === JSON.stringify(result.data)) {
+                      if (!prev[batteryId] || (prev[batteryId].chartInfo && prev[batteryId].chartInfo.title)) {
                           return prev;
                       }
                       return {
@@ -92,8 +87,12 @@ export default function Home() {
 
   useEffect(() => {
       if (lastUpdatedBattery && dataByBattery[lastUpdatedBattery]) {
-          console.log(`[useEffect] Triggering chart info update for ${lastUpdatedBattery}`);
-          updateChartInfo(lastUpdatedBattery, dataByBattery[lastUpdatedBattery].history);
+          const batteryData = dataByBattery[lastUpdatedBattery];
+          // Only update chart info if it doesn't exist yet to reduce API calls
+          if (batteryData.history.length > 0 && !batteryData.chartInfo?.title) {
+            console.log(`[useEffect] Triggering chart info update for ${lastUpdatedBattery}`);
+            updateChartInfo(lastUpdatedBattery, batteryData.history);
+          }
           setLastUpdatedBattery(null); 
       }
   }, [lastUpdatedBattery, dataByBattery, updateChartInfo]);
@@ -161,10 +160,16 @@ export default function Home() {
             const newHistory = newData[batteryId].history || [];
             const existingHistory = mergedData[batteryId]?.history || [];
             const combined = [...existingHistory, ...newHistory];
+            
+            // Ensure chartInfo from imported data is preserved.
+            const existingChartInfo = mergedData[batteryId]?.chartInfo;
+            const newChartInfo = newData[batteryId].chartInfo;
+
             mergedData[batteryId] = {
                 ...mergedData[batteryId],
                 ...newData[batteryId],
-                history: combined
+                history: combined,
+                chartInfo: newChartInfo || existingChartInfo || null
             }
             setLastUpdatedBattery(batteryId);
         }
@@ -232,8 +237,8 @@ export default function Home() {
     });
 
     return {
-        startDate: utcFormat(new Date(slicedData[0].timestamp), "MMM d, yyyy, h:mm:ss a"),
-        endDate: utcFormat(new Date(slicedData[slicedData.length - 1].timestamp), "MMM d, yyyy, h:mm:ss a"),
+        startDate: formatInTimeZone(new Date(slicedData[0].timestamp), 'UTC', "MMM d, yyyy, h:mm:ss a"),
+        endDate: formatInTimeZone(new Date(slicedData[slicedData.length - 1].timestamp), 'UTC', "MMM d, yyyy, h:mm:ss a"),
         stats
     };
   }, [brushRange, dataHistory, selectedMetrics, activeBatteryId]);

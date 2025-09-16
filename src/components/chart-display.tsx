@@ -39,10 +39,6 @@ const lineColors = [
   "hsl(var(--chart-5))",
 ];
 
-const utcFormat = (date: Date | number, fmt: string) => {
-    return formatInTimeZone(date, 'UTC', fmt);
-}
-
 export function ChartDisplay({
   batteryId,
   data,
@@ -160,9 +156,9 @@ export function ChartDisplay({
                     tickFormatter={(value) => {
                       const date = new Date(value);
                       if (dateRange === '1h' || dateRange === '1d') {
-                        return utcFormat(date, 'HH:mm');
+                        return formatInTimeZone(date, 'UTC', 'HH:mm');
                       }
-                      return utcFormat(date, 'MMM d');
+                      return formatInTimeZone(date, 'UTC', 'MMM d');
                     }}
                     scale="time"
                     type="number"
@@ -174,9 +170,11 @@ export function ChartDisplay({
                     content={<ChartTooltipContent 
                         indicator="line" 
                         labelFormatter={(label, payload) => {
-                            if (payload && payload.length > 0) {
+                            if (payload && payload.length > 0 && payload[0].payload) {
                                 const timestamp = payload[0].payload.timestamp;
-                                return utcFormat(new Date(timestamp), "MMM d, yyyy, h:mm:ss a");
+                                if (timestamp) {
+                                  return formatInTimeZone(new Date(timestamp), "UTC", "MMM d, yyyy, h:mm:ss a");
+                                }
                             }
                             return label;
                         }}
@@ -201,7 +199,7 @@ export function ChartDisplay({
                   stroke="hsl(var(--primary))"
                   tickFormatter={(value) => {
                       const date = new Date(value);
-                      return utcFormat(date, 'MMM d');
+                      return formatInTimeZone(date, 'UTC', 'MMM d');
                   }}
                   onChange={handleBrushChange}
                   startIndex={undefined}
