@@ -77,13 +77,25 @@ export function ChartControls({
     const main: string[] = [];
     const extra: string[] = [];
     availableMetrics.forEach(m => {
-        if (standardMetrics.some(sm => m.toLowerCase().includes(sm))) {
+        const lowerM = m.toLowerCase();
+        // Exact matches or if the available metric name contains a standard metric name
+        if (standardMetrics.includes(lowerM) || standardMetrics.some(sm => lowerM.includes(sm))) {
             main.push(m);
         } else {
             extra.push(m);
         }
     });
-    return { mainMetrics: main, extraMetrics: extra };
+    // Ensure standard metrics that might not have been in the first check are included if available
+     const mainSet = new Set(main);
+     availableMetrics.forEach(m => {
+         if (standardMetrics.includes(m.toLowerCase()) && !mainSet.has(m)) {
+             main.push(m);
+             mainSet.add(m);
+         }
+     });
+     const finalExtra = extra.filter(m => !mainSet.has(m));
+
+    return { mainMetrics: [...mainSet].sort(), extraMetrics: finalExtra.sort() };
   }, [availableMetrics]);
 
   return (

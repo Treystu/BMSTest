@@ -27,6 +27,64 @@ type BatteryData = {
   chartInfo: ChartInfo | null;
 }
 
+const averageDataPoints = (points: DataPoint[]): DataPoint[] => {
+    if (points.length < 2) {
+        return points;
+    }
+
+    const sortedPoints = [...points].sort((a, b) => a.timestamp - b.timestamp);
+    const merged: DataPoint[] = [];
+    let currentGroup: DataPoint[] = [sortedPoints[0]];
+
+    for (let i = 1; i < sortedPoints.length; i++) {
+        const currentPoint = sortedPoints[i];
+        const lastPointInGroup = currentGroup[currentGroup.length - 1];
+
+        if (currentPoint.timestamp - lastPointInGroup.timestamp <= DUPLICATE_THRESHOLD_MS) {
+            currentGroup.push(currentPoint);
+        } else {
+            merged.push(mergeGroup(currentGroup));
+            currentGroup = [currentPoint];
+        }
+    }
+    merged.push(mergeGroup(currentGroup));
+
+    console.log(`Averaged ${points.length} points into ${merged.length} points.`);
+    return merged;
+};
+
+const mergeGroup = (group: DataPoint[]): DataPoint => {
+    if (group.length === 1) {
+        return group[0];
+    }
+
+    const totalPoints = group.length;
+    const mergedPoint: DataPoint = { timestamp: 0 };
+    const valueCounts: { [key: string]: number } = {};
+
+    for (const point of group) {
+        mergedPoint.timestamp += point.timestamp;
+        for (const key in point) {
+            if (key !== 'timestamp') {
+                const value = point[key];
+                if (typeof value === 'number' && !isNaN(value)) {
+                    mergedPoint[key] = (mergedPoint[key] || 0) + value;
+                    valueCounts[key] = (valueCounts[key] || 0) + 1;
+                }
+            }
+        }
+    }
+
+    mergedPoint.timestamp /= totalPoints;
+
+    for (const key in valueCounts) {
+        mergedPoint[key] /= valueCounts[key];
+    }
+
+    return mergedPoint;
+};
+
+
 export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<Record<string, BatteryData>>({});
   const [activeBatteryId, setActiveBatteryId] = useState<string>("");
@@ -119,21 +177,12 @@ export default function Home() {
             const existingHistory = updatedData[key].history;
             const newPoints = value.newPoints;
 
-            const filteredNewPoints = newPoints.filter(newPoint => {
-                return !existingHistory.some(existingPoint => 
-                    Math.abs(existingPoint.timestamp - newPoint.timestamp) < DUPLICATE_THRESHOLD_MS
-                );
-            });
-            
-            if (filteredNewPoints.length < newPoints.length) {
-                console.log(`Filtered out ${newPoints.length - filteredNewPoints.length} duplicate data points for battery ${key}.`);
-            }
-
-            const combinedHistory = [...existingHistory, ...filteredNewPoints].sort((a, b) => a.timestamp - b.timestamp);
+            const combinedHistory = [...existingHistory, ...newPoints];
+            const averagedHistory = averageDataPoints(combinedHistory);
 
             updatedData[key] = {
                 ...updatedData[key],
-                history: combinedHistory
+                history: averagedHistory
             };
         });
         
@@ -149,29 +198,37 @@ export default function Home() {
     });
 
     for (const [batteryId] of newDataByBattery.entries()) {
-        if (!dataByBattery[batteryId]) continue; // Should not happen with the logic above, but good practice
+        setDataByBattery(currentData => {
+            const batteryState = currentData[batteryId];
+            if (!batteryState) return currentData; // Should not happen
 
-        const fullHistory = dataByBattery[batteryId].history;
-        const insights = fullHistory.map(dp => `Data point at ${new Date(dp.timestamp).toLocaleString()}: ${Object.entries(dp).filter(([k]) => k !== 'timestamp').map(([k,v]) => `${k}: ${v}`).join(', ')}. `).join('');
-        const metrics = Object.keys(fullHistory.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp');
+            const fullHistory = batteryState.history;
+            if (fullHistory.length === 0) return currentData;
 
-        if(metrics.length > 0) {
-          const result = await getChartInfo(metrics, "all time", insights);
-          if (result.success && result.data) {
-              setDataByBattery(prev => {
-                  if (!prev[batteryId] || JSON.stringify(prev[batteryId].chartInfo) === JSON.stringify(result.data)) {
-                      return prev;
-                  }
-                  return {
-                      ...prev,
-                      [batteryId]: {
-                          ...prev[batteryId],
-                          chartInfo: result.data
-                      }
-                  }
-              });
-          }
-        }
+            const insights = fullHistory.map(dp => `Data point at ${new Date(dp.timestamp).toLocaleString()}: ${Object.entries(dp).filter(([k]) => k !== 'timestamp').map(([k,v]) => `${k}: ${v}`).join(', ')}. `).join('');
+            const metrics = Object.keys(fullHistory.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp');
+
+            if (metrics.length > 0) {
+                (async () => {
+                    const result = await getChartInfo(metrics, "all time", insights);
+                    if (result.success && result.data) {
+                        setDataByBattery(prev => {
+                            if (!prev[batteryId] || JSON.stringify(prev[batteryId].chartInfo) === JSON.stringify(result.data)) {
+                                return prev;
+                            }
+                            return {
+                                ...prev,
+                                [batteryId]: {
+                                    ...prev[batteryId],
+                                    chartInfo: result.data
+                                }
+                            }
+                        });
+                    }
+                })();
+            }
+            return currentData; // Return current state synchronously
+        });
     }
   };
   
