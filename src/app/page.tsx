@@ -23,7 +23,7 @@ const initialMetrics: SelectedMetrics = {
 };
 
 const sanitizeMetricKey = (key: string): string => {
-    const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/gi, ''); // Sanitize completely
+    const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/gi, '');
     
     if (lowerKey === 'voltage') return 'voltage';
     if (lowerKey === 'soc' || lowerKey === 'stateofcharge') return 'soc';
@@ -31,7 +31,6 @@ const sanitizeMetricKey = (key: string): string => {
     if (lowerKey.includes('capacity') || lowerKey.includes('cap')) return 'capacity';
     if (lowerKey.includes('temp')) return 'temperature';
 
-    // Fallback for other keys to make them valid identifiers
     return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
 };
 
@@ -233,8 +232,8 @@ export default function Home() {
     });
 
     return {
-        startDate: utcFormat(new Date(slicedData[0].timestamp), "PPpp"),
-        endDate: utcFormat(new Date(slicedData[slicedData.length - 1].timestamp), "PPpp"),
+        startDate: utcFormat(new Date(slicedData[0].timestamp), "MMM d, yyyy, h:mm:ss a"),
+        endDate: utcFormat(new Date(slicedData[slicedData.length - 1].timestamp), "MMM d, yyyy, h:mm:ss a"),
         stats
     };
   }, [brushRange, dataHistory, selectedMetrics, activeBatteryId]);

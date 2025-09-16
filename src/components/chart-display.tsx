@@ -176,7 +176,7 @@ export function ChartDisplay({
                         labelFormatter={(label, payload) => {
                             if (payload && payload.length > 0) {
                                 const timestamp = payload[0].payload.timestamp;
-                                return utcFormat(new Date(timestamp), "PPpp");
+                                return utcFormat(new Date(timestamp), "MMM d, yyyy, h:mm:ss a");
                             }
                             return label;
                         }}
