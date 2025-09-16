@@ -26,8 +26,6 @@ type ChartDisplayProps = {
   onBrushChange: (range: BrushRange | null) => void;
 };
 
-const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
-
 const lineColors: { [key: string]: string } = {
   soc: "hsl(var(--chart-1))",
   voltage: "hsl(var(--chart-2))",
@@ -91,8 +89,8 @@ export function ChartDisplay({
   onBrushChange,
 }: ChartDisplayProps) {
 
-  const { processedData, brushFriendlyData } = useMemo(() => {
-    if (!data || data.length === 0) return { processedData: [], brushFriendlyData: [] };
+  const sortedData = useMemo(() => {
+    if (!data || data.length === 0) return [];
     
     const now = new Date();
     const timeFilteredData = data.filter(d => {
@@ -105,36 +103,10 @@ export function ChartDisplay({
         }
     });
 
-    if (timeFilteredData.length === 0) {
-      return { processedData: [], brushFriendlyData: [] };
-    }
+    // This is the most critical part: ensuring the data is sorted chronologically.
+    return [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
 
-    const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
-    const brushData = [...sortedData]; 
-    
-    const finalDataWithGaps: (DataPoint | {timestamp: number, [key: string]: null})[] = [];
-    if (sortedData.length > 0) {
-      finalDataWithGaps.push(sortedData[0]);
-      for (let i = 1; i < sortedData.length; i++) {
-        const prevPoint = sortedData[i-1];
-        const currentPoint = sortedData[i];
-        
-        if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-          const gapPoint: {timestamp: number, [key: string]: null} = {
-            timestamp: prevPoint.timestamp + 1, 
-          };
-          Object.keys(selectedMetrics).forEach(metric => {
-              gapPoint[metric] = null;
-          });
-          finalDataWithGaps.push(gapPoint);
-        }
-        
-        finalDataWithGaps.push(currentPoint);
-      }
-    }
-
-    return { processedData: finalDataWithGaps, brushFriendlyData: brushData };
-  }, [data, dateRange, selectedMetrics]);
+  }, [data, dateRange]);
   
   const handleBrushChangeCallback = useCallback((range: { startIndex?: number, endIndex?: number } | undefined) => {
     if (range?.startIndex === undefined || range?.endIndex === undefined) {
@@ -142,8 +114,8 @@ export function ChartDisplay({
       return;
     }
     
-    const startTimestamp = brushFriendlyData[range.startIndex]?.timestamp;
-    const endTimestamp = brushFriendlyData[range.endIndex]?.timestamp;
+    const startTimestamp = sortedData[range.startIndex]?.timestamp;
+    const endTimestamp = sortedData[range.endIndex]?.timestamp;
     
     if (startTimestamp === undefined || endTimestamp === undefined) {
       onBrushChange(null);
@@ -158,7 +130,7 @@ export function ChartDisplay({
     } else {
         onBrushChange(null);
     }
-  }, [onBrushChange, brushFriendlyData, data]);
+  }, [onBrushChange, sortedData, data]);
 
   const { leftMetrics, rightMetrics } = useMemo(() => {
     const left: string[] = [];
@@ -178,13 +150,11 @@ export function ChartDisplay({
   }, [selectedMetrics]);
 
   const visibleRange = useMemo(() => {
-      if(processedData.length < 2) return 0;
-      const timestamps = processedData.map(p => p.timestamp).filter((t): t is number => t !== null && t !== undefined);
-      if (timestamps.length < 2) return 0;
-      const first = Math.min(...timestamps);
-      const last = Math.max(...timestamps);
+      if(sortedData.length < 2) return 0;
+      const first = sortedData[0].timestamp;
+      const last = sortedData[sortedData.length - 1].timestamp;
       return last - first;
-  }, [processedData]);
+  }, [sortedData]);
 
   if (isLoading && data.length === 0) {
     return (
@@ -200,7 +170,7 @@ export function ChartDisplay({
     );
   }
 
-  if (!batteryId || processedData.length < 2) {
+  if (!batteryId || sortedData.length < 2) {
     return (
         <Card>
             <CardHeader>
@@ -226,7 +196,7 @@ export function ChartDisplay({
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={450}>
-          <LineChart data={processedData} margin={{ top: 5, right: 20, left: 20, bottom: 20 }}>
+          <LineChart data={sortedData} margin={{ top: 5, right: 20, left: 20, bottom: 20 }}>
             <CartesianGrid vertical={false} />
             <XAxis
               dataKey="timestamp"
@@ -251,7 +221,6 @@ export function ChartDisplay({
                 stroke={getLineColor(metric)}
                 dot={false}
                 strokeWidth={2}
-                connectNulls={false}
                 isAnimationActive={false}
               />
             ))}
@@ -265,7 +234,6 @@ export function ChartDisplay({
                 stroke={getLineColor(metric)}
                 dot={false}
                 strokeWidth={2}
-                connectNulls={false}
                 isAnimationActive={false}
               />
             ))}
@@ -276,9 +244,9 @@ export function ChartDisplay({
               stroke="hsl(var(--primary))"
               tickFormatter={(value) => formatInTimeZone(new Date(value), 'UTC', 'MMM d')}
               onChange={handleBrushChangeCallback}
-              data={brushFriendlyData}
-              startIndex={brushFriendlyData.length > 100 ? brushFriendlyData.length - 100 : 0}
-              endIndex={brushFriendlyData.length - 1}
+              data={sortedData}
+              startIndex={sortedData.length > 100 ? sortedData.length - 100 : 0}
+              endIndex={sortedData.length - 1}
             />
           </LineChart>
         </ResponsiveContainer>
@@ -286,5 +254,3 @@ export function ChartDisplay({
     </Card>
   );
 }
-
-    
