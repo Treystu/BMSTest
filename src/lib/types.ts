@@ -44,6 +44,5 @@ export type ImageFile = {
   name: string;
   status: ImageFileStatus;
   error?: string;
+  verifiedMetrics?: { [key: string]: boolean };
 };
-
-    

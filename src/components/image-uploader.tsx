@@ -2,7 +2,7 @@
 
 import { useState, useRef, useTransition, useCallback } from 'react';
 import Image from 'next/image';
-import { Upload, X, Loader2, Trash2, Download, UploadCloud, AlertCircle, CheckCircle, RefreshCw, Clock } from 'lucide-react';
+import { Upload, X, Loader2, Trash2, Download, UploadCloud, AlertCircle, CheckCircle, RefreshCw, Clock, Check, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -12,6 +12,8 @@ import type { ExtractionResult, BatteryDataMap, ImageFile } from '@/lib/types';
 import JSZip from 'jszip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
+import { ScrollArea } from './ui/scroll-area';
 
 type ImageUploaderProps = {
   onNewDataPoint: (result: ExtractionResult) => void;
@@ -24,6 +26,8 @@ type ImageUploaderProps = {
 const isImageFile = (fileName: string) => {
     return /\.(jpe?g|png|webp)$/i.test(fileName);
 };
+
+const coreMetrics = ['soc', 'voltage', 'current', 'capacity'];
 
 const StatusIcon = ({ status, error }: { status: ImageFile['status'], error?: string }) => {
     let icon;
@@ -44,7 +48,7 @@ const StatusIcon = ({ status, error }: { status: ImageFile['status'], error?: st
         case 'success':
             icon = <CheckCircle className="h-3 w-3" />;
             tooltipText = 'Success';
-className = 'bg-green-500';
+            className = 'bg-green-500';
             break;
         case 'error':
             icon = <AlertCircle className="h-3 w-3" />;
@@ -243,8 +247,8 @@ export function ImageUploader({
       let successfulExtractions = 0;
       let failedExtractions = 0;
       
-      const updateFileStatus = (id: string, status: ImageFile['status'], error?: string) => {
-        setImageFiles(prev => prev.map(f => f.id === id ? { ...f, status, error } : f));
+      const updateFileStatus = (id: string, status: ImageFile['status'], data?: { error?: string, verifiedMetrics?: { [key: string]: boolean } }) => {
+        setImageFiles(prev => prev.map(f => f.id === id ? { ...f, status, ...data } : f));
       };
 
       for (let i = 0; i < filesToProcess.length; i++) {
@@ -257,16 +261,28 @@ export function ImageUploader({
             if (result.success && result.data) {
               onNewDataPoint(result.data);
               successfulExtractions++;
-              updateFileStatus(file.id, 'success');
+              
+              const verifiedMetrics: { [key: string]: boolean } = {};
+              try {
+                const parsedData = JSON.parse(result.data.extractedData);
+                const extractedKeys = Object.keys(parsedData).map(k => k.toLowerCase());
+                coreMetrics.forEach(coreMetric => {
+                  verifiedMetrics[coreMetric] = extractedKeys.some(ek => ek.includes(coreMetric));
+                });
+              } catch {
+                coreMetrics.forEach(coreMetric => { verifiedMetrics[coreMetric] = false; });
+              }
+
+              updateFileStatus(file.id, 'success', { verifiedMetrics });
               console.log(`[ImageUploader] Success for ${file.name}`);
             } else {
               failedExtractions++;
-              updateFileStatus(file.id, 'error', result.error);
+              updateFileStatus(file.id, 'error', { error: result.error });
               console.error(`[ImageUploader] Failure for ${file.name}:`, result.error);
             }
         } catch (e: any) {
             failedExtractions++;
-            updateFileStatus(file.id, 'error', e.message);
+            updateFileStatus(file.id, 'error', { error: e.message });
             console.error(`[ImageUploader] Critical Failure for ${file.name}:`, e);
         }
         setProgress(((i + 1) / filesToProcess.length) * 100);
@@ -283,6 +299,7 @@ export function ImageUploader({
   };
 
   const hasFailedUploads = imageFiles.some(f => f.status === 'error');
+  const hasProcessedFiles = imageFiles.some(f => f.status === 'success' || f.status === 'error');
 
   return (
     <>
@@ -360,6 +377,44 @@ export function ImageUploader({
                 <Trash2 className="mr-2 h-4 w-4" /> Clear All
             </Button>
         </div>
+        {hasProcessedFiles && (
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="verification">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5" />
+                  <span className="font-semibold">Verification Details</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <ScrollArea className="h-64 w-full">
+                  <div className="p-1 space-y-2">
+                    {imageFiles.filter(f => f.status !== 'queued' && f.status !== 'processing').map(file => (
+                      <div key={file.id} className="text-sm p-2 rounded-md bg-muted/50">
+                        <p className="font-semibold truncate" title={file.name}>{file.name}</p>
+                        {file.status === 'success' ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+                            {coreMetrics.map(metric => (
+                              <div key={metric} className="flex items-center gap-1">
+                                {file.verifiedMetrics?.[metric] ? 
+                                  <Check className="h-4 w-4 text-green-600" /> : 
+                                  <X className="h-4 w-4 text-red-600" />
+                                }
+                                <span className="capitalize">{metric}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-red-600 mt-1">Failed: {file.error}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
       </CardContent>
     </Card>
     {duplicateFiles && (
