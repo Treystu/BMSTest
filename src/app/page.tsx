@@ -232,9 +232,17 @@ export default function Home() {
         }
     });
 
+    const getFormattedDate = (timestamp: number) => {
+        try {
+            return formatInTimeZone(new Date(timestamp), 'UTC', "MMM d, yyyy, h:mm:ss a");
+        } catch (e) {
+            return "Invalid Date";
+        }
+    };
+
     return {
-        startDate: formatInTimeZone(new Date(slicedData[0].timestamp), 'UTC', "MMM d, yyyy, h:mm:ss a"),
-        endDate: formatInTimeZone(new Date(slicedData[slicedData.length - 1].timestamp), 'UTC', "MMM d, yyyy, h:mm:ss a"),
+        startDate: getFormattedDate(slicedData[0].timestamp),
+        endDate: getFormattedDate(slicedData[slicedData.length - 1].timestamp),
         stats
     };
   }, [brushRange, dataHistory, selectedMetrics, activeBatteryId]);

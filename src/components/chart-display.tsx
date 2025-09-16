@@ -98,6 +98,21 @@ export function ChartDisplay({
       onBrushChange(range);
     }
   }, [onBrushChange]);
+  
+  const getFormattedTick = (value: any, format: string) => {
+    try {
+      if (typeof value === 'number') {
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) {
+          return formatInTimeZone(date, 'UTC', format);
+        }
+      }
+      return value;
+    } catch (e) {
+      console.error("Date formatting error:", e);
+      return value;
+    }
+  }
 
 
   if (isLoading && data.length === 0) {
@@ -154,11 +169,8 @@ export function ChartDisplay({
                 <XAxis
                     dataKey="timestamp"
                     tickFormatter={(value) => {
-                      const date = new Date(value);
-                      if (dateRange === '1h' || dateRange === '1d') {
-                        return formatInTimeZone(date, 'UTC', 'HH:mm');
-                      }
-                      return formatInTimeZone(date, 'UTC', 'MMM d');
+                      const format = (dateRange === '1h' || dateRange === '1d') ? 'HH:mm' : 'MMM d';
+                      return getFormattedTick(value, format);
                     }}
                     scale="time"
                     type="number"
@@ -170,13 +182,8 @@ export function ChartDisplay({
                     content={<ChartTooltipContent 
                         indicator="line" 
                         labelFormatter={(label, payload) => {
-                            if (payload && payload.length > 0 && payload[0].payload) {
-                                const timestamp = payload[0].payload.timestamp;
-                                if (timestamp) {
-                                  return formatInTimeZone(new Date(timestamp), "UTC", "MMM d, yyyy, h:mm:ss a");
-                                }
-                            }
-                            return label;
+                           const timestamp = payload?.[0]?.payload?.timestamp;
+                           return getFormattedTick(timestamp, "MMM d, yyyy, h:mm:ss a");
                         }}
                     />}
                 />
@@ -197,10 +204,7 @@ export function ChartDisplay({
                   dataKey="timestamp"
                   height={30}
                   stroke="hsl(var(--primary))"
-                  tickFormatter={(value) => {
-                      const date = new Date(value);
-                      return formatInTimeZone(date, 'UTC', 'MMM d');
-                  }}
+                  tickFormatter={(value) => getFormattedTick(value, 'MMM d')}
                   onChange={handleBrushChange}
                   startIndex={undefined}
                   endIndex={undefined}
