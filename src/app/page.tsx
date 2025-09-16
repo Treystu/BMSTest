@@ -233,11 +233,14 @@ export default function Home() {
     });
 
     const getFormattedDate = (timestamp: number) => {
-        try {
-            return formatInTimeZone(new Date(timestamp), 'UTC', "MMM d, yyyy, h:mm:ss a");
-        } catch (e) {
+      try {
+        if (typeof timestamp !== 'number' || isNaN(timestamp)) {
             return "Invalid Date";
         }
+        return formatInTimeZone(new Date(timestamp), 'UTC', "MMM d, yyyy, h:mm:ss a");
+      } catch (e) {
+          return "Invalid Date";
+      }
     };
 
     return {

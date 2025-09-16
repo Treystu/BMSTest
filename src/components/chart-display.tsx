@@ -39,6 +39,27 @@ const lineColors = [
   "hsl(var(--chart-5))",
 ];
 
+const getFormattedTick = (value: any, format: string): string => {
+  if (typeof value !== 'number' || isNaN(value)) {
+    // If value is not a valid number, return it as a string.
+    // Recharts might pass other types, so this is a safe fallback.
+    return String(value);
+  }
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) {
+      // If the number doesn't convert to a valid date, return original value.
+      return String(value);
+    }
+    return formatInTimeZone(date, 'UTC', format);
+  } catch (e) {
+    // In case of any other unexpected error from the formatting library.
+    console.error("Date formatting error:", e);
+    return String(value);
+  }
+};
+
+
 export function ChartDisplay({
   batteryId,
   data,
@@ -99,22 +120,6 @@ export function ChartDisplay({
     }
   }, [onBrushChange]);
   
-  const getFormattedTick = (value: any, format: string) => {
-    try {
-      if (typeof value === 'number') {
-        const date = new Date(value);
-        if (!isNaN(date.getTime())) {
-          return formatInTimeZone(date, 'UTC', format);
-        }
-      }
-      return value;
-    } catch (e) {
-      console.error("Date formatting error:", e);
-      return value;
-    }
-  }
-
-
   if (isLoading && data.length === 0) {
     return (
         <Card>
