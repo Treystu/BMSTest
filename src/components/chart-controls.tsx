@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import type { SelectedMetrics } from '@/lib/types';
+import { useMemo } from 'react';
 
 type ChartControlsProps = {
   availableMetrics: string[];
@@ -23,15 +25,15 @@ const metricIcons: { [key: string]: React.ReactNode } = {
   soc: <Battery className="h-4 w-4" />,
 };
 
-// Function to insert spaces before capital letters for readability
+const standardMetrics = ['soc', 'voltage', 'current', 'capacity', 'temperature'];
+
 const formatMetricName = (name: string) => {
     return name
-        .replace(/([A-Z])/g, ' $1') // insert a space before all caps
-        .replace(/_/g, ' ') // replace underscores with spaces
-        .replace(/^./, (str) => str.toUpperCase()) // capitalize the first letter
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/_/g, ' ')
+        .replace(/^./, (str) => str.toUpperCase())
         .trim();
 };
-
 
 const getMetricIcon = (metric: string) => {
     const lowerMetric = metric.toLowerCase();
@@ -43,6 +45,22 @@ const getMetricIcon = (metric: string) => {
     return <Hash className="h-4 w-4" />;
 };
 
+const MetricCheckbox = ({ metric, selectedMetrics, onMetricChange }: { metric: string, selectedMetrics: SelectedMetrics, onMetricChange: (metric: string, checked: boolean) => void }) => (
+    <div key={metric} className="flex items-center space-x-2">
+        <Checkbox
+            id={metric}
+            checked={!!selectedMetrics[metric]}
+            onCheckedChange={(checked) => onMetricChange(metric, !!checked)}
+        />
+        <Label
+            htmlFor={metric}
+            className="flex items-center gap-2 font-normal capitalize cursor-pointer"
+        >
+            {getMetricIcon(metric)}
+            {formatMetricName(metric)}
+        </Label>
+    </div>
+);
 
 export function ChartControls({
   availableMetrics,
@@ -55,32 +73,48 @@ export function ChartControls({
     setSelectedMetrics({ ...selectedMetrics, [metric]: checked });
   };
 
+  const { mainMetrics, extraMetrics } = useMemo(() => {
+    const main: string[] = [];
+    const extra: string[] = [];
+    availableMetrics.forEach(m => {
+        if (standardMetrics.some(sm => m.toLowerCase().includes(sm))) {
+            main.push(m);
+        } else {
+            extra.push(m);
+        }
+    });
+    return { mainMetrics: main, extraMetrics: extra };
+  }, [availableMetrics]);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>3. Chart Controls</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col md:flex-row gap-6">
-        <div className="flex-1">
-          <Label className="text-base font-semibold">Metrics</Label>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-2">
-            {availableMetrics.map((metric) => (
-              <div key={metric} className="flex items-center space-x-2">
-                <Checkbox
-                  id={metric}
-                  checked={!!selectedMetrics[metric]}
-                  onCheckedChange={(checked) => handleMetricChange(metric, !!checked)}
-                />
-                <Label
-                  htmlFor={metric}
-                  className="flex items-center gap-2 font-normal capitalize cursor-pointer"
-                >
-                  {getMetricIcon(metric)}
-                  {formatMetricName(metric)}
-                </Label>
-              </div>
-            ))}
+        <div className="flex-1 space-y-4">
+          <div>
+            <Label className="text-base font-semibold">Metrics</Label>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-2">
+              {mainMetrics.map((metric) => (
+                <MetricCheckbox key={metric} metric={metric} selectedMetrics={selectedMetrics} onMetricChange={handleMetricChange} />
+              ))}
+            </div>
           </div>
+          {extraMetrics.length > 0 && (
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="item-1">
+                <AccordionTrigger>Extra extracted metrics</AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-2">
+                    {extraMetrics.map((metric) => (
+                      <MetricCheckbox key={metric} metric={metric} selectedMetrics={selectedMetrics} onMetricChange={handleMetricChange} />
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          )}
         </div>
         <div className="flex-1">
           <Label className="text-base font-semibold">Time Range</Label>

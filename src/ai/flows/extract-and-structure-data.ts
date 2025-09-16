@@ -37,7 +37,7 @@ const prompt = ai.definePrompt({
 
 You will use OCR to extract data from the image provided, interpret the data, and structure it.
 
-First, identify a unique identifier for the battery from the image. This could be a serial number, a model number, or any other distinct text string that can be used to uniquely identify this specific battery. Assign this to the 'batteryId' field.
+First, identify the unique battery serial number from the image. The serial number for the batteries in these images always starts with "DL-". Find that text string and assign it to the 'batteryId' field.
 
 Then, extract all metrics from the image (e.g., SOC, Voltage, Current, Capacity, Temperatures) and structure them into a valid JSON object.
 
