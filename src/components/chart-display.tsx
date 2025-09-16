@@ -63,27 +63,50 @@ export function ChartDisplay({
   onBrushChange,
 }: ChartDisplayProps) {
 
-  const filteredData = useMemo(() => {
+  const filteredDataWithGaps = useMemo(() => {
     if (!data || data.length === 0) return [];
-    if (dateRange === 'all') return data;
+    
+    let timeFilteredData: DataPoint[];
+    if (dateRange === 'all') {
+      timeFilteredData = data;
+    } else {
+        const now = new Date();
+        let startTime: number;
 
-    const now = new Date();
-    let startTime: number;
-
-    switch (dateRange) {
-      case '1d':
-        startTime = subDays(now, 1).getTime();
-        break;
-      case '1w':
-        startTime = subWeeks(now, 1).getTime();
-        break;
-      case '1m':
-        startTime = subMonths(now, 1).getTime();
-        break;
-      default:
-        return data;
+        switch (dateRange) {
+          case '1d':
+            startTime = subDays(now, 1).getTime();
+            break;
+          case '1w':
+            startTime = subWeeks(now, 1).getTime();
+            break;
+          case '1m':
+            startTime = subMonths(now, 1).getTime();
+            break;
+          default:
+            timeFilteredData = data;
+            return timeFilteredData;
+        }
+        timeFilteredData = data.filter(d => d.timestamp >= startTime);
     }
-    return data.filter(d => d.timestamp >= startTime);
+    
+    if (timeFilteredData.length < 2) return timeFilteredData;
+
+    const dataWithNulls: (DataPoint | null)[] = [];
+    dataWithNulls.push(timeFilteredData[0]);
+
+    for (let i = 1; i < timeFilteredData.length; i++) {
+        const prevPoint = timeFilteredData[i-1];
+        const currentPoint = timeFilteredData[i];
+        
+        if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
+            // Insert a null point to create a visual gap in the chart
+            dataWithNulls.push(null);
+        }
+        dataWithNulls.push(currentPoint);
+    }
+
+    return dataWithNulls;
   }, [data, dateRange]);
   
   const activeMetrics = useMemo(() => Object.keys(selectedMetrics).filter(k => selectedMetrics[k as keyof SelectedMetrics]), [selectedMetrics]);
@@ -92,7 +115,7 @@ export function ChartDisplay({
     const config: any = {};
     let colorIndex = 0;
     activeMetrics.forEach((metric) => {
-        if(filteredData.some(d => d[metric] !== undefined && d[metric] !== null)){
+        if(filteredDataWithGaps.some(d => d && d[metric] !== undefined && d[metric] !== null)){
             config[metric] = {
                 label: metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
                 color: lineColors[colorIndex % lineColors.length],
@@ -101,42 +124,26 @@ export function ChartDisplay({
         }
     });
     return config;
-  }, [activeMetrics, filteredData]);
-  
-  const segmentedData = useMemo(() => {
-    if (filteredData.length === 0) return [];
-    
-    const segments: DataPoint[][] = [];
-    let currentSegment: DataPoint[] = [];
-
-    for (let i = 0; i < filteredData.length; i++) {
-        const point = filteredData[i];
-        if (i > 0) {
-            const prevPoint = filteredData[i-1];
-            if (point.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-                if (currentSegment.length > 0) {
-                    segments.push(currentSegment);
-                }
-                currentSegment = [];
-            }
-        }
-        currentSegment.push(point);
-    }
-    if (currentSegment.length > 0) {
-        segments.push(currentSegment);
-    }
-
-    return segments;
-  }, [filteredData]);
-
+  }, [activeMetrics, filteredDataWithGaps]);
 
   const handleBrushChange = useCallback((range: BrushRange | undefined) => {
     if (range?.startIndex === undefined || range?.endIndex === undefined) {
       onBrushChange(null);
     } else {
-      onBrushChange(range);
+      // Note: We need to map the brush range from the original `data` array, not the one with nulls
+      const allData = data;
+      const brushDataSubset = filteredDataWithGaps.slice(range.startIndex, range.endIndex + 1).filter(d => d !== null);
+      if(brushDataSubset.length > 0) {
+        const firstTimestamp = brushDataSubset[0]!.timestamp;
+        const lastTimestamp = brushDataSubset[brushDataSubset.length - 1]!.timestamp;
+        const startIndexInOriginal = allData.findIndex(d => d.timestamp === firstTimestamp);
+        const endIndexInOriginal = allData.findIndex(d => d.timestamp === lastTimestamp);
+        onBrushChange({startIndex: startIndexInOriginal, endIndex: endIndexInOriginal});
+      } else {
+        onBrushChange(null);
+      }
     }
-  }, [onBrushChange]);
+  }, [onBrushChange, filteredDataWithGaps, data]);
   
   if (isLoading && data.length === 0) {
     return (
@@ -180,7 +187,7 @@ export function ChartDisplay({
         <ChartContainer config={chartConfig} className="h-[450px] w-full">
             <LineChart
                 accessibilityLayer
-                data={filteredData} // Use full data for context, Brush, etc.
+                data={filteredDataWithGaps}
                 margin={{
                   top: 5,
                   right: 10,
@@ -211,20 +218,18 @@ export function ChartDisplay({
                     />}
                 />
                  <ChartLegend content={<ChartLegendContent />} />
-                {Object.keys(chartConfig).map((metric) => 
-                    segmentedData.map((segment) => (
-                        <Line
-                            key={`${metric}-${segment[0]?.timestamp}`}
-                            type="monotone"
-                            data={segment}
-                            dataKey={metric}
-                            stroke={chartConfig[metric].color}
-                            strokeWidth={2}
-                            dot={false}
-                            animationDuration={300}
-                        />
-                    ))
-                )}
+                {Object.keys(chartConfig).map((metric) => (
+                    <Line
+                        key={metric}
+                        type="monotone"
+                        dataKey={metric}
+                        stroke={chartConfig[metric].color}
+                        strokeWidth={2}
+                        dot={false}
+                        animationDuration={300}
+                        connectNulls={false}
+                    />
+                ))}
                 <Brush 
                   dataKey="timestamp"
                   height={30}
@@ -233,7 +238,7 @@ export function ChartDisplay({
                   onChange={handleBrushChange}
                   startIndex={undefined}
                   endIndex={undefined}
-                  data={filteredData}
+                  data={data} // Brush should use original data without nulls
                 />
             </LineChart>
         </ChartContainer>
