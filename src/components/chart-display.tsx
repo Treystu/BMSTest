@@ -24,6 +24,7 @@ type ChartDisplayProps = {
 };
 
 const AGGREGATION_WINDOW = 15 * 60 * 1000; // 15 minutes in milliseconds
+const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
 
 export function ChartDisplay({
   batteryId,
@@ -40,7 +41,6 @@ export function ChartDisplay({
   const { processedData, brushFriendlyData } = useMemo(() => {
     if (!data || data.length === 0) return { processedData: [], brushFriendlyData: [] };
     
-    // 1. Filter data based on the selected date range
     const now = new Date();
     const timeFilteredData = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
@@ -56,11 +56,9 @@ export function ChartDisplay({
       return { processedData: [], brushFriendlyData: [] };
     }
 
-    // 2. Sort the data chronologically. This is a critical step.
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
-    const brushData = [...sortedData]; // Keep a clean version for the brush
+    const brushData = [...sortedData]; 
     
-    // 3. Aggregate data into 15-minute windows
     const aggregatedData: ProcessedDataPoint[] = [];
     if (sortedData.length > 0) {
         let currentWindowStart = Math.floor(sortedData[0].timestamp / AGGREGATION_WINDOW) * AGGREGATION_WINDOW;
@@ -70,20 +68,17 @@ export function ChartDisplay({
             if (point.timestamp < currentWindowStart + AGGREGATION_WINDOW) {
                 pointsInWindow.push(point);
             } else {
-                // Process the completed window
                 if (pointsInWindow.length > 0) {
                     if (pointsInWindow.length === 1) {
-                        // Single point, add as-is
                         aggregatedData.push({ ...pointsInWindow[0], type: 'single' });
                     } else {
-                        // Aggregate multiple points
                         const aggregate: ProcessedDataPoint = {
-                            timestamp: pointsInWindow.reduce((acc, p) => acc + p.timestamp, 0) / pointsInWindow.length,
+                            timestamp: pointsInWindow[0].timestamp, // Use first point's timestamp for window alignment
                             type: 'aggregate',
                             stats: {},
                         };
                         activeMetrics.forEach(metric => {
-                            const values = pointsInWindow.map(p => p[metric]).filter(v => v !== null && v !== undefined && !isNaN(v as number));
+                            const values = pointsInWindow.map(p => p[metric]).filter((v): v is number => v !== null && v !== undefined && !isNaN(v));
                             if (values.length > 0) {
                                 const sum = values.reduce((acc, v) => acc + v, 0);
                                 aggregate.stats[metric] = {
@@ -92,31 +87,28 @@ export function ChartDisplay({
                                     avg: sum / values.length,
                                     count: values.length
                                 };
-                                // Use average for line plotting
                                 aggregate[metric] = aggregate.stats[metric].avg;
                             }
                         });
                         aggregatedData.push(aggregate);
                     }
                 }
-                // Start a new window
                 currentWindowStart = Math.floor(point.timestamp / AGGREGATION_WINDOW) * AGGREGATION_WINDOW;
                 pointsInWindow = [point];
             }
         }
         
-        // Process the last window
         if (pointsInWindow.length > 0) {
              if (pointsInWindow.length === 1) {
                 aggregatedData.push({ ...pointsInWindow[0], type: 'single' });
             } else {
                 const aggregate: ProcessedDataPoint = {
-                    timestamp: pointsInWindow.reduce((acc, p) => acc + p.timestamp, 0) / pointsInWindow.length,
+                    timestamp: pointsInWindow[0].timestamp,
                     type: 'aggregate',
                     stats: {},
                 };
                 activeMetrics.forEach(metric => {
-                    const values = pointsInWindow.map(p => p[metric]).filter(v => v !== null && v !== undefined && !isNaN(v as number));
+                    const values = pointsInWindow.map(p => p[metric]).filter((v): v is number => v !== null && v !== undefined && !isNaN(v));
                     if (values.length > 0) {
                         const sum = values.reduce((acc, v) => acc + v, 0);
                         aggregate.stats[metric] = {
@@ -135,8 +127,6 @@ export function ChartDisplay({
         }
     }
     
-    // Final step: insert nulls for large time gaps to create visual breaks
-    const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
     const finalDataWithGaps: ProcessedDataPoint[] = [];
     if (aggregatedData.length > 0) {
       finalDataWithGaps.push(aggregatedData[0]);
@@ -145,8 +135,8 @@ export function ChartDisplay({
         const currentPoint = aggregatedData[i];
         if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
           const gapPoint: ProcessedDataPoint = {
-            timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 4), // Place gap closer to prev point
-            type: 'single' // treat as single so it doesn't get thick line
+            timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 4), 
+            type: 'single' 
           };
           activeMetrics.forEach(metric => {
             gapPoint[metric] = null;
@@ -167,8 +157,6 @@ export function ChartDisplay({
       return;
     }
     
-    // The brush gives indices relative to its own data (brushFriendlyData)
-    // We need to find the corresponding timestamps
     const startTimestamp = brushFriendlyData[range.startIndex]?.timestamp;
     const endTimestamp = brushFriendlyData[range.endIndex]?.timestamp;
     
@@ -177,7 +165,6 @@ export function ChartDisplay({
       return;
     }
 
-    // Now, find the indices in the original, unfiltered `data` array to update the stats card
     const startIndexInOriginal = data.findIndex(d => d.timestamp >= startTimestamp);
     let endIndexInOriginal = -1;
     for (let i = data.length - 1; i >= 0; i--) {

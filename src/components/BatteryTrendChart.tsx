@@ -1,7 +1,8 @@
+
 "use client";
 
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ResponsiveContainer
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ResponsiveContainer, Curve
 } from 'recharts';
 import { useMemo } from 'react';
 import type { ProcessedDataPoint, SelectedMetrics } from '@/lib/types';
@@ -17,15 +18,12 @@ const lineColors = {
 
 const getLineColor = (metric: string) => lineColors[metric as keyof typeof lineColors] || "hsl(var(--foreground))";
 
-// Define which metrics belong to which axis
 const leftAxisMetricSet = new Set(['soc', 'capacity']);
 
-// Dynamically format the timestamp on the X-axis based on the visible data range
 const getFormattedTimestamp = (ts: number, rangeInMs: number) => {
     if (isNaN(ts)) return "";
     try {
         const oneDay = 24 * 60 * 60 * 1000;
-        // If range is less than 2 days, show time. Otherwise, show date.
         const formatStr = rangeInMs <= oneDay * 2 ? 'HH:mm' : 'MMM d';
         return formatInTimeZone(new Date(ts), 'UTC', formatStr);
     } catch (e) {
@@ -44,7 +42,7 @@ const CustomTooltipContent = ({ active, payload, label }: any) => {
                     const metric = p.dataKey as string;
                     if (p.value === null || p.value === undefined) return null;
                     
-                    if (dataPoint.type === 'aggregate' && dataPoint.stats[metric]) {
+                    if (dataPoint.type === 'aggregate' && dataPoint.stats && dataPoint.stats[metric]) {
                         const stats = dataPoint.stats[metric];
                         return (
                              <div key={metric} style={{ color: p.color }} className="p-2 rounded-md bg-muted/50">
@@ -72,6 +70,29 @@ const CustomTooltipContent = ({ active, payload, label }: any) => {
     return null;
 };
 
+// Custom line renderer to modulate stroke width
+const CustomLine = (props: any) => {
+  const { points, stroke, strokeWidth: defaultStrokeWidth } = props;
+
+  if (!points || points.length === 0) {
+    return null;
+  }
+
+  const pathSegments = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i+1];
+    // Check if the payload exists and is not a null-gap point
+    if (p1.payload && p1.payload[props['dataKey']] !== null && p2.payload && p2.payload[props['dataKey']] !== null) {
+      const strokeWidth = p1.payload.type === 'aggregate' ? 4 : defaultStrokeWidth;
+      pathSegments.push(
+        <Curve key={`segment-${i}`} {...props} points={[p1, p2]} stroke={stroke} strokeWidth={strokeWidth} />
+      );
+    }
+  }
+
+  return <>{pathSegments}</>;
+};
 
 type BatteryTrendChartProps = {
     processedData: ProcessedDataPoint[];
@@ -101,8 +122,10 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
 
   const visibleRange = useMemo(() => {
       if(processedData.length < 2) return 0;
-      const first = processedData[0]?.timestamp;
-      const last = processedData[processedData.length - 1]?.timestamp;
+      const timestamps = processedData.map(p => p.timestamp).filter(t => t !== null);
+      if (timestamps.length < 2) return 0;
+      const first = Math.min(...timestamps);
+      const last = Math.max(...timestamps);
       return last - first;
   }, [processedData]);
 
@@ -135,6 +158,7 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
             strokeWidth={2}
             isAnimationActive={false}
             connectNulls={false}
+            content={<CustomLine />}
           />
         ))}
         
@@ -149,6 +173,7 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
             strokeWidth={2}
             isAnimationActive={false}
             connectNulls={false}
+            content={<CustomLine />}
           />
         ))}
 
