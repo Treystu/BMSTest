@@ -25,7 +25,7 @@ const sanitizeMetricKey = (key: string): string => {
     const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/gi, '');
     
     if (lowerKey === 'voltage') return 'voltage';
-    if (lowerKey === 'soc' || lowerKey === 'stateofcharge') return 'soc';
+    if (lowerKey.includes('soc') || lowerKey.includes('stateofcharge')) return 'soc';
     if (lowerKey === 'current') return 'current';
     if (lowerKey.includes('capacity') || lowerKey.includes('cap')) return 'capacity';
     if (lowerKey.includes('temp')) return 'temperature';

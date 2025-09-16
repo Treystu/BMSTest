@@ -39,8 +39,8 @@ You will use OCR to extract data from the image provided, interpret the data, an
 
 First, identify the unique battery serial number from the image. The serial number for the batteries in these images always starts with "DL-". Find that text string and assign it to the 'batteryId' field.
 
-Next, extract all metrics from the image. It is critical that you always extract the following fields if they are present:
-- 'SOC'
+Next, you MUST extract all metrics from the image. It is critical that you always extract the following fields if they are visible in the image:
+- 'SOC' (sometimes labeled 'State of Charge')
 - 'Voltage' (the primary voltage reading, not 'Maximum volt', 'Minimum volt', 'Average volt', or 'Voltage difference')
 - 'Current'
 - 'Capacity' (sometimes labeled 'Remaining Capacity')
@@ -94,5 +94,3 @@ const extractAndStructureDataFlow = ai.defineFlow(
     throw new Error('Flow failed after multiple retries.');
   }
 );
-
-    
