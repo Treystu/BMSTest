@@ -23,7 +23,6 @@ type ChartDisplayProps = {
   onBrushChange: (range: BrushRange | null) => void;
 };
 
-const AGGREGATION_WINDOW = 15 * 60 * 1000; // 15 minutes in milliseconds
 const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
 
 export function ChartDisplay({
@@ -41,6 +40,7 @@ export function ChartDisplay({
   const { processedData, brushFriendlyData } = useMemo(() => {
     if (!data || data.length === 0) return { processedData: [], brushFriendlyData: [] };
     
+    // 1. Filter by Date Range
     const now = new Date();
     const timeFilteredData = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
@@ -56,93 +56,32 @@ export function ChartDisplay({
       return { processedData: [], brushFriendlyData: [] };
     }
 
+    // 2. Critically: Sort by timestamp
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    // 3. Create a clean dataset for the brush (no gaps)
     const brushData = [...sortedData]; 
     
-    const aggregatedData: ProcessedDataPoint[] = [];
-    if (sortedData.length > 0) {
-        let currentWindowStart = Math.floor(sortedData[0].timestamp / AGGREGATION_WINDOW) * AGGREGATION_WINDOW;
-        let pointsInWindow: DataPoint[] = [];
-
-        for (const point of sortedData) {
-            if (point.timestamp < currentWindowStart + AGGREGATION_WINDOW) {
-                pointsInWindow.push(point);
-            } else {
-                if (pointsInWindow.length > 0) {
-                    if (pointsInWindow.length === 1) {
-                        aggregatedData.push({ ...pointsInWindow[0], type: 'single' });
-                    } else {
-                        const aggregate: ProcessedDataPoint = {
-                            timestamp: pointsInWindow[0].timestamp, // Use first point's timestamp for window alignment
-                            type: 'aggregate',
-                            stats: {},
-                        };
-                        activeMetrics.forEach(metric => {
-                            const values = pointsInWindow.map(p => p[metric]).filter((v): v is number => v !== null && v !== undefined && !isNaN(v));
-                            if (values.length > 0) {
-                                const sum = values.reduce((acc, v) => acc + v, 0);
-                                aggregate.stats[metric] = {
-                                    min: Math.min(...values),
-                                    max: Math.max(...values),
-                                    avg: sum / values.length,
-                                    count: values.length
-                                };
-                                aggregate[metric] = aggregate.stats[metric].avg;
-                            }
-                        });
-                        aggregatedData.push(aggregate);
-                    }
-                }
-                currentWindowStart = Math.floor(point.timestamp / AGGREGATION_WINDOW) * AGGREGATION_WINDOW;
-                pointsInWindow = [point];
-            }
-        }
-        
-        if (pointsInWindow.length > 0) {
-             if (pointsInWindow.length === 1) {
-                aggregatedData.push({ ...pointsInWindow[0], type: 'single' });
-            } else {
-                const aggregate: ProcessedDataPoint = {
-                    timestamp: pointsInWindow[0].timestamp,
-                    type: 'aggregate',
-                    stats: {},
-                };
-                activeMetrics.forEach(metric => {
-                    const values = pointsInWindow.map(p => p[metric]).filter((v): v is number => v !== null && v !== undefined && !isNaN(v));
-                    if (values.length > 0) {
-                        const sum = values.reduce((acc, v) => acc + v, 0);
-                        aggregate.stats[metric] = {
-                            min: Math.min(...values),
-                            max: Math.max(...values),
-                            avg: sum / values.length,
-                            count: values.length
-                        };
-                        aggregate[metric] = aggregate.stats[metric].avg;
-                    } else {
-                        aggregate[metric] = null;
-                    }
-                });
-                aggregatedData.push(aggregate);
-            }
-        }
-    }
-    
+    // 4. Insert nulls for time gaps
     const finalDataWithGaps: ProcessedDataPoint[] = [];
-    if (aggregatedData.length > 0) {
-      finalDataWithGaps.push(aggregatedData[0]);
-      for (let i = 1; i < aggregatedData.length; i++) {
-        const prevPoint = aggregatedData[i-1];
-        const currentPoint = aggregatedData[i];
+    if (sortedData.length > 0) {
+      finalDataWithGaps.push(sortedData[0]);
+      for (let i = 1; i < sortedData.length; i++) {
+        const prevPoint = sortedData[i-1];
+        const currentPoint = sortedData[i];
+        
         if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
+          // Insert a gap point with null values
           const gapPoint: ProcessedDataPoint = {
-            timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 4), 
-            type: 'single' 
+            timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 4), // Position gap point after previous point
+            type: 'single' // or any other appropriate type
           };
           activeMetrics.forEach(metric => {
             gapPoint[metric] = null;
           });
           finalDataWithGaps.push(gapPoint);
         }
+        
         finalDataWithGaps.push(currentPoint);
       }
     }
@@ -165,6 +104,7 @@ export function ChartDisplay({
       return;
     }
 
+    // Find the corresponding indices in the original, unsorted `data` array
     const startIndexInOriginal = data.findIndex(d => d.timestamp >= startTimestamp);
     let endIndexInOriginal = -1;
     for (let i = data.length - 1; i >= 0; i--) {
@@ -216,7 +156,7 @@ export function ChartDisplay({
       <CardHeader>
         <CardTitle>{chartInfo?.title || `Trends for ${batteryId}`}</CardTitle>
         <CardDescription>
-          {chartInfo?.description || 'Time-based trend of extracted metrics. Thicker lines indicate aggregated data.'}
+          {chartInfo?.description || 'Time-based trend of extracted metrics.'}
         </CardDescription>
       </CardHeader>
       <CardContent>

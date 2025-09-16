@@ -2,13 +2,13 @@
 "use client";
 
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ResponsiveContainer, Curve
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ResponsiveContainer
 } from 'recharts';
 import { useMemo } from 'react';
 import type { ProcessedDataPoint, SelectedMetrics } from '@/lib/types';
 import { formatInTimeZone } from 'date-fns-tz';
 
-const lineColors = {
+const lineColors: { [key: string]: string } = {
   soc: "hsl(var(--chart-1))",
   voltage: "hsl(var(--chart-2))",
   current: "hsl(var(--chart-3))",
@@ -16,13 +16,28 @@ const lineColors = {
   temperature: "hsl(var(--chart-5))",
 };
 
-const getLineColor = (metric: string) => lineColors[metric as keyof typeof lineColors] || "hsl(var(--foreground))";
+const getLineColor = (metric: string): string => {
+    // Fallback for dynamically added metrics
+    if (lineColors[metric]) {
+        return lineColors[metric];
+    }
+    // Generate a consistent color based on the metric name hash
+    let hash = 0;
+    for (let i = 0; i < metric.length; i++) {
+        hash = metric.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h = hash % 360;
+    return `hsl(${h}, 70%, 50%)`;
+};
 
+
+// Metrics that are typically percentages (0-100)
 const leftAxisMetricSet = new Set(['soc', 'capacity']);
 
 const getFormattedTimestamp = (ts: number, rangeInMs: number) => {
     if (isNaN(ts)) return "";
     try {
+        // Use a more detailed format for smaller time ranges
         const oneDay = 24 * 60 * 60 * 1000;
         const formatStr = rangeInMs <= oneDay * 2 ? 'HH:mm' : 'MMM d';
         return formatInTimeZone(new Date(ts), 'UTC', formatStr);
@@ -33,66 +48,21 @@ const getFormattedTimestamp = (ts: number, rangeInMs: number) => {
 
 const CustomTooltipContent = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-        const dataPoint = payload[0].payload as ProcessedDataPoint;
-
         return (
             <div className="p-3 bg-background border rounded-lg shadow-xl text-sm space-y-2">
                 <p className="font-bold">{formatInTimeZone(new Date(label), 'UTC', "MMM d, yyyy, h:mm:ss a")}</p>
-                {payload.map((p: any) => {
-                    const metric = p.dataKey as string;
-                    if (p.value === null || p.value === undefined) return null;
-                    
-                    if (dataPoint.type === 'aggregate' && dataPoint.stats && dataPoint.stats[metric]) {
-                        const stats = dataPoint.stats[metric];
-                        return (
-                             <div key={metric} style={{ color: p.color }} className="p-2 rounded-md bg-muted/50">
-                                <p className="capitalize font-semibold">{metric}:</p>
-                                <ul className="list-disc list-inside text-muted-foreground">
-                                    <li>Avg: {stats.avg.toFixed(3)}</li>
-                                    <li>Min: {stats.min.toFixed(3)}</li>
-                                    <li>Max: {stats.max.toFixed(3)}</li>
-                                    <li>Count: {stats.count}</li>
-                                </ul>
-                            </div>
-                        )
-                    }
-                    
-                    return(
-                        <div key={metric} style={{ color: p.color }} className="flex justify-between items-center">
-                            <p className="capitalize font-semibold">{metric}:</p> 
-                            <p className="font-mono ml-4">{p.value?.toFixed(3)}</p>
-                        </div>
-                    )
-                })}
+                {payload.map((p: any) => (
+                    <div key={p.dataKey} style={{ color: p.color }} className="flex justify-between items-center">
+                        <p className="capitalize font-semibold">{p.dataKey}:</p> 
+                        <p className="font-mono ml-4">{p.value?.toFixed(3)}</p>
+                    </div>
+                ))}
             </div>
         );
     }
     return null;
 };
 
-// Custom line renderer to modulate stroke width
-const CustomLine = (props: any) => {
-  const { points, stroke, strokeWidth: defaultStrokeWidth } = props;
-
-  if (!points || points.length === 0) {
-    return null;
-  }
-
-  const pathSegments = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const p1 = points[i];
-    const p2 = points[i+1];
-    // Check if the payload exists and is not a null-gap point
-    if (p1.payload && p1.payload[props['dataKey']] !== null && p2.payload && p2.payload[props['dataKey']] !== null) {
-      const strokeWidth = p1.payload.type === 'aggregate' ? 4 : defaultStrokeWidth;
-      pathSegments.push(
-        <Curve key={`segment-${i}`} {...props} points={[p1, p2]} stroke={stroke} strokeWidth={strokeWidth} />
-      );
-    }
-  }
-
-  return <>{pathSegments}</>;
-};
 
 type BatteryTrendChartProps = {
     processedData: ProcessedDataPoint[];
@@ -117,12 +87,13 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
         }
     });
 
-    return { leftMetrics: left, rightMetrics: right };
+    return { leftMetrics, rightMetrics };
   }, [selectedMetrics]);
 
   const visibleRange = useMemo(() => {
       if(processedData.length < 2) return 0;
-      const timestamps = processedData.map(p => p.timestamp).filter(t => t !== null);
+      // Filter out null gap points before calculating range
+      const timestamps = processedData.map(p => p.timestamp).filter((t): t is number => t !== null && t !== undefined);
       if (timestamps.length < 2) return 0;
       const first = Math.min(...timestamps);
       const last = Math.max(...timestamps);
@@ -156,9 +127,8 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
             stroke={getLineColor(metric)}
             dot={false}
             strokeWidth={2}
-            isAnimationActive={false}
             connectNulls={false}
-            content={<CustomLine />}
+            isAnimationActive={false}
           />
         ))}
         
@@ -171,9 +141,8 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
             stroke={getLineColor(metric)}
             dot={false}
             strokeWidth={2}
-            isAnimationActive={false}
             connectNulls={false}
-            content={<CustomLine />}
+            isAnimationActive={false}
           />
         ))}
 
