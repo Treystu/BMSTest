@@ -7,13 +7,11 @@ import { ImageUploader } from "@/components/image-uploader";
 import { DataDisplay } from "@/components/data-display";
 import { ChartControls } from "@/components/chart-controls";
 import { ChartDisplay, type BrushRange } from "@/components/chart-display";
-import { getChartInfo } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { formatInTimeZone } from 'date-fns-tz';
-import { AnalysisDisplay } from "@/components/analysis-display";
-
+import { DayOverDayChart } from "@/components/day-over-day-chart";
 
 const initialMetrics: SelectedMetrics = {
   soc: true,
@@ -53,56 +51,13 @@ export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<BatteryDataMap>({});
   const [activeBatteryId, setActiveBatteryId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState<SelectedMetrics>(initialMetrics);
   const [dateRange, setDateRange] = useState<string>("all");
   const [brushRange, setBrushRange] = useState<BrushRange | null>(null);
+  const [chartMode, setChartMode] = useState<'trend' | 'day-over-day'>('trend');
   const { toast } = useToast();
 
   const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
-  
-  const handleGenerateSummary = useCallback(async () => {
-      if (!activeBatteryId) {
-          toast({ title: "No Battery Selected", description: "Please select a battery to generate a summary.", variant: "destructive" });
-          return;
-      }
-      const history = dataByBattery[activeBatteryId]?.history || [];
-      if (history.length === 0) {
-          toast({ title: "No Data Available", description: "There is no data for the selected battery to summarize.", variant: "destructive" });
-          return;
-      }
-
-      console.log(`[handleGenerateSummary] Generating chart info for battery: ${activeBatteryId}`);
-      setIsGeneratingSummary(true);
-
-      const insights = history.map(dp => `Data point at ${new Date(dp.timestamp).toLocaleString()}: ${Object.entries(dp).filter(([k]) => k !== 'timestamp').map(([k,v]) => `${k}: ${v}`).join(', ')}. `).join('');
-      const metrics = Object.keys(history.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp');
-
-      if (metrics.length > 0) {
-          try {
-              const result = await getChartInfo(metrics, "all time", insights);
-              if (result.success && result.data) {
-                  console.log(`[handleGenerateSummary] Successfully got chart info for ${activeBatteryId}`);
-                  setDataByBattery(prev => ({
-                      ...prev,
-                      [activeBatteryId!]: {
-                          ...prev[activeBatteryId!],
-                          chartInfo: result.data
-                      }
-                  }));
-                  toast({ title: "Summary Generated", description: "The AI-powered chart summary has been updated." });
-              } else {
-                  console.error(`[handleGenerateSummary] Failed to get chart info for ${activeBatteryId}`, result.error);
-                  toast({ title: "Summary Generation Failed", description: result.error, variant: "destructive" });
-              }
-          } catch(e: any) {
-              console.error(`[handleGenerateSummary] Error fetching chart info for ${activeBatteryId}`, e);
-              toast({ title: "Summary Generation Error", description: e.message, variant: "destructive" });
-          } finally {
-              setIsGeneratingSummary(false);
-          }
-      }
-  }, [activeBatteryId, dataByBattery, toast]);
 
   useEffect(() => {
     if (batteryIds.length > 0 && !activeBatteryId) {
@@ -287,13 +242,20 @@ export default function Home() {
                 </Card>
             )}
             
-            <Tabs defaultValue="visualization">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="visualization">Visualization</TabsTrigger>
-                <TabsTrigger value="analysis">Analysis</TabsTrigger>
-              </TabsList>
-              <TabsContent value="visualization" className="space-y-6 mt-6">
-                {brushData && (
+            <div className="space-y-6">
+                <ChartControls
+                availableMetrics={availableMetrics}
+                selectedMetrics={selectedMetrics}
+                setSelectedMetrics={setSelectedMetrics}
+                dateRange={dateRange}
+                setDateRange={setDateRange}
+                hasData={dataHistory.length > 0}
+                chartMode={chartMode}
+                setChartMode={setChartMode}
+                />
+                {chartMode === 'trend' ? (
+                <>
+                    {brushData && (
                     <Card>
                         <CardHeader>
                             <CardTitle>Selected Range Analysis</CardTitle>
@@ -314,34 +276,24 @@ export default function Home() {
                             </div>
                         </CardContent>
                     </Card>
+                    )}
+                    <ChartDisplay
+                    batteryId={activeBatteryId || ""}
+                    data={dataHistory}
+                    selectedMetrics={selectedMetrics}
+                    dateRange={dateRange}
+                    chartInfo={chartInfo}
+                    isLoading={isLoading && dataHistory.length === 0}
+                    onBrushChange={handleBrushChange}
+                    />
+                </>
+                ) : (
+                    <DayOverDayChart 
+                        dataHistory={dataHistory} 
+                        availableMetrics={availableMetrics} 
+                    />
                 )}
-                <ChartControls
-                  availableMetrics={availableMetrics}
-                  selectedMetrics={selectedMetrics}
-                  setSelectedMetrics={setSelectedMetrics}
-                  dateRange={dateRange}
-                  setDateRange={setDateRange}
-                  onGenerateSummary={handleGenerateSummary}
-                  isGeneratingSummary={isGeneratingSummary}
-                  hasData={dataHistory.length > 0}
-                />
-                <ChartDisplay
-                  batteryId={activeBatteryId || ""}
-                  data={dataHistory}
-                  selectedMetrics={selectedMetrics}
-                  dateRange={dateRange}
-                  chartInfo={chartInfo}
-                  isLoading={isLoading && dataHistory.length === 0}
-                  onBrushChange={handleBrushChange}
-                />
-              </TabsContent>
-              <TabsContent value="analysis" className="mt-6">
-                <AnalysisDisplay 
-                  batteryId={activeBatteryId}
-                  dataHistory={dataHistory}
-                />
-              </TabsContent>
-            </Tabs>
+            </div>
           </div>
         </div>
       </main>
