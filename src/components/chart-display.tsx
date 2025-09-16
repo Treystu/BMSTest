@@ -83,7 +83,7 @@ export function ChartDisplay({
                             stats: {},
                         };
                         activeMetrics.forEach(metric => {
-                            const values = pointsInWindow.map(p => p[metric]).filter(v => v !== null && v !== undefined && !isNaN(v));
+                            const values = pointsInWindow.map(p => p[metric]).filter(v => v !== null && v !== undefined && !isNaN(v as number));
                             if (values.length > 0) {
                                 const sum = values.reduce((acc, v) => acc + v, 0);
                                 aggregate.stats[metric] = {
@@ -116,7 +116,7 @@ export function ChartDisplay({
                     stats: {},
                 };
                 activeMetrics.forEach(metric => {
-                    const values = pointsInWindow.map(p => p[metric]).filter(v => v !== null && v !== undefined && !isNaN(v));
+                    const values = pointsInWindow.map(p => p[metric]).filter(v => v !== null && v !== undefined && !isNaN(v as number));
                     if (values.length > 0) {
                         const sum = values.reduce((acc, v) => acc + v, 0);
                         aggregate.stats[metric] = {
@@ -126,6 +126,8 @@ export function ChartDisplay({
                             count: values.length
                         };
                         aggregate[metric] = aggregate.stats[metric].avg;
+                    } else {
+                        aggregate[metric] = null;
                     }
                 });
                 aggregatedData.push(aggregate);
@@ -133,7 +135,30 @@ export function ChartDisplay({
         }
     }
     
-    return { processedData: aggregatedData, brushFriendlyData: brushData };
+    // Final step: insert nulls for large time gaps to create visual breaks
+    const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
+    const finalDataWithGaps: ProcessedDataPoint[] = [];
+    if (aggregatedData.length > 0) {
+      finalDataWithGaps.push(aggregatedData[0]);
+      for (let i = 1; i < aggregatedData.length; i++) {
+        const prevPoint = aggregatedData[i-1];
+        const currentPoint = aggregatedData[i];
+        if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
+          const gapPoint: ProcessedDataPoint = {
+            timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 4), // Place gap closer to prev point
+            type: 'single' // treat as single so it doesn't get thick line
+          };
+          activeMetrics.forEach(metric => {
+            gapPoint[metric] = null;
+          });
+          finalDataWithGaps.push(gapPoint);
+        }
+        finalDataWithGaps.push(currentPoint);
+      }
+    }
+
+
+    return { processedData: finalDataWithGaps, brushFriendlyData: brushData };
   }, [data, dateRange, activeMetrics]);
   
   const handleBrushChangeCallback = useCallback((range: { startIndex?: number, endIndex?: number } | undefined) => {

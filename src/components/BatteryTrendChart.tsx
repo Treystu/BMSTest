@@ -82,7 +82,7 @@ const CustomLine = (props: any) => {
     }
     
     const pathSegments = [];
-    let currentSegmentPoints = [];
+    let currentSegmentPoints: any[] = [];
 
     for (let i = 0; i < points.length; i++) {
         const point = points[i];
@@ -195,6 +195,7 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
             dot={false}
             isAnimationActive={false}
             content={<CustomLine />}
+            connectNulls={false}
           />
         ))}
         
@@ -208,6 +209,7 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
             dot={false}
             isAnimationActive={false}
             content={<CustomLine />}
+            connectNulls={false}
           />
         ))}
 
