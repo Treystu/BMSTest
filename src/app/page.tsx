@@ -177,16 +177,21 @@ export default function Home() {
   }, [dataHistory]);
   
   const availableMetrics = useMemo(() => {
+    const allMetrics = new Set<string>();
     if (dataHistory.length > 0) {
-      const allKeys = dataHistory.reduce((acc, curr) => {
-        Object.keys(curr).forEach(key => acc.add(key));
-        return acc;
-      }, new Set<string>());
-      allKeys.delete('timestamp');
-      return Array.from(allKeys);
+      dataHistory.forEach(dp => {
+        Object.keys(dp).forEach(key => {
+          if (key !== 'timestamp') {
+            allMetrics.add(key);
+          }
+        });
+      });
     }
-    return Object.keys(initialMetrics);
+    // Ensure core metrics are always available for selection
+    Object.keys(initialMetrics).forEach(m => allMetrics.add(m));
+    return Array.from(allMetrics);
   }, [dataHistory]);
+
 
   const brushData = useMemo(() => {
     if (!brushRange || brushRange.startIndex === undefined || brushRange.endIndex === undefined || !activeBatteryId) return null;
@@ -319,3 +324,5 @@ export default function Home() {
     </div>
   );
 }
+
+    

@@ -29,6 +29,7 @@ type ChartDisplayProps = {
 type AggregatedDataPoint = {
     timestamp: number;
     count: number;
+    isGap?: boolean;
     [key: string]: any; // for avg, min, max values
 };
 
@@ -56,7 +57,7 @@ const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
 const AGGREGATION_WINDOW = 15 * 60 * 1000; // 15 minutes
 
 const CustomLine = (props: any) => {
-    const { points, dataKey, stroke, strokeWidth } = props;
+    const { points, strokeWidth } = props;
     const segments: any[] = [];
     let currentSegment: any[] = [];
 
@@ -76,13 +77,23 @@ const CustomLine = (props: any) => {
         <g>
             {segments.map((segment, index) => {
                 if(segment.length === 0) return null;
-                const path = segment.map((p: any, i: number) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-                // Find a representative point to check for aggregation
-                const pointPayload = segment[0].payload;
-                const isAggregated = pointPayload.count > 1;
-                const finalStrokeWidth = isAggregated ? parseFloat(strokeWidth) * 2.5 : strokeWidth;
-
-                return <path key={index} d={path} fill="none" stroke={stroke} strokeWidth={finalStrokeWidth} />;
+                
+                return segment.map((p: any, i: number) => {
+                    if (i === 0) return null;
+                    const prev = segment[i - 1];
+                    const isAggregated = p.payload.count > 1 || prev.payload.count > 1;
+                    const finalStrokeWidth = isAggregated ? parseFloat(strokeWidth) * 2.5 : strokeWidth;
+                    
+                    return (
+                        <line 
+                            key={`${p.x}-${p.y}`}
+                            x1={prev.x} y1={prev.y}
+                            x2={p.x} y2={p.y}
+                            stroke={p.stroke}
+                            strokeWidth={finalStrokeWidth}
+                        />
+                    );
+                })
             })}
         </g>
     );
@@ -186,16 +197,27 @@ export function ChartDisplay({
     if (range?.startIndex === undefined || range?.endIndex === undefined) {
       onBrushChange(null);
     } else {
-      // Note: We need to map the brush range from the original `data` array, not the one with nulls
       const allData = data;
       const brushDataSubset = processedData.slice(range.startIndex, range.endIndex + 1).filter(d => d !== null && !d.isGap);
       if(brushDataSubset.length > 0) {
         const firstTimestamp = brushDataSubset[0]!.timestamp;
         const lastTimestamp = brushDataSubset[brushDataSubset.length - 1]!.timestamp;
+        
         const startIndexInOriginal = allData.findIndex(d => d.timestamp >= firstTimestamp);
-        let endIndexInOriginal = allData.findLastIndex(d => d.timestamp <= lastTimestamp);
-        if (endIndexInOriginal === -1 && allData.length > 0) endIndexInOriginal = allData.length -1;
-        onBrushChange({startIndex: startIndexInOriginal, endIndex: endIndexInOriginal});
+        let endIndexInOriginal = -1;
+        for (let i = allData.length - 1; i >= 0; i--) {
+            if (allData[i].timestamp <= lastTimestamp) {
+                endIndexInOriginal = i;
+                break;
+            }
+        }
+        
+        if(startIndexInOriginal !== -1 && endIndexInOriginal !== -1) {
+            onBrushChange({startIndex: startIndexInOriginal, endIndex: endIndexInOriginal});
+        } else {
+            onBrushChange(null);
+        }
+
       } else {
         onBrushChange(null);
       }
@@ -294,7 +316,9 @@ export function ChartDisplay({
                     dataKey="timestamp"
                     tickFormatter={(value, index) => {
                       if (processedData[index]?.isGap) return "";
-                      const format = (dateRange === '1d') ? 'HH:mm' : 'MMM d';
+                      const visibleRange = processedData[processedData.length-1].timestamp - processedData[0].timestamp;
+                      const oneDay = 24 * 60 * 60 * 1000;
+                      const format = visibleRange <= oneDay * 2 ? 'HH:mm' : 'MMM d';
                       return getFormattedTick(value, format);
                     }}
                     scale="time"
@@ -314,7 +338,6 @@ export function ChartDisplay({
                         stroke={chartConfig[metric].color}
                         strokeWidth={2}
                         dot={false}
-                        animationDuration={300}
                         connectNulls={false}
                         isAnimationActive={false} // Important for custom line
                         content={<CustomLine />}
@@ -336,3 +359,5 @@ export function ChartDisplay({
     </Card>
   );
 }
+
+    

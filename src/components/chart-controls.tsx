@@ -82,15 +82,16 @@ export function ChartControls({
 
   const { mainMetrics, extraMetrics } = useMemo(() => {
     const allMetrics = new Set(availableMetrics);
-    coreMetrics.forEach(cm => allMetrics.add(cm));
-
+    
     const main = new Set<string>();
     const extra = new Set<string>();
     
+    coreMetrics.forEach(cm => {
+        if(allMetrics.has(cm)) main.add(cm);
+    })
+
     allMetrics.forEach(m => {
-        if (coreMetrics.some(cm => m.toLowerCase().includes(cm))) {
-            main.add(m);
-        } else {
+        if (!coreMetrics.includes(m)) {
             extra.add(m);
         }
     });
@@ -165,3 +166,5 @@ export function ChartControls({
     </Card>
   );
 }
+
+    
