@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult } from "@/lib/types";
 import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
@@ -9,8 +9,8 @@ import { ChartControls } from "@/components/chart-controls";
 import { ChartDisplay } from "@/components/chart-display";
 import { getChartInfo } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 
 const initialMetrics: SelectedMetrics = {
@@ -34,11 +34,20 @@ export default function Home() {
   const [timeRange, setTimeRange] = useState<string>("all");
   const { toast } = useToast();
 
+  const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
+
+  useEffect(() => {
+    if (!activeBatteryId && batteryIds.length > 0) {
+      setActiveBatteryId(batteryIds[0]);
+    }
+  }, [batteryIds, activeBatteryId]);
+
   const handleUploadComplete = async (results: { success: boolean, data?: ExtractionResult, error?: string }[]) => {
     const successfulExtractions = results.filter(r => r.success).map(r => r.data!);
     
     if (successfulExtractions.length === 0) {
         toast({ title: 'Extraction Failed', description: 'No data could be extracted from the images.', variant: 'destructive' });
+        setIsLoading(false);
         return;
     }
 
@@ -84,47 +93,52 @@ export default function Home() {
     
     setDataByBattery(prev => {
         const updatedData = { ...prev };
+        let firstNewBatteryId: string | null = null;
+
         newDataByBattery.forEach((value, key) => {
-            const existingHistory = updatedData[key]?.history || [];
-            const combinedHistory = [...existingHistory, ...value.newPoints].sort((a, b) => a.timestamp - b.timestamp);
+            if (!updatedData[key]) {
+                if (!firstNewBatteryId) {
+                    firstNewBatteryId = key;
+                }
+                updatedData[key] = { history: [], chartInfo: null };
+            }
+            const combinedHistory = [...updatedData[key].history, ...value.newPoints].sort((a, b) => a.timestamp - b.timestamp);
             updatedData[key] = {
                 ...updatedData[key],
                 history: combinedHistory
             };
         });
+
+        if (firstNewBatteryId && !activeBatteryId) {
+            setActiveBatteryId(firstNewBatteryId);
+        } else if (!activeBatteryId && Object.keys(updatedData).length > 0) {
+            setActiveBatteryId(Object.keys(updatedData)[0]);
+        }
+        
         return updatedData;
     });
 
     for (const [batteryId, { newPoints, allInsights }] of newDataByBattery.entries()) {
-        const currentData = dataByBattery[batteryId] || { history: [] };
-        const combinedHistory = [...currentData.history, ...newPoints];
+        const currentHistory = dataByBattery[batteryId]?.history || [];
+        const combinedHistory = [...currentHistory, ...newPoints];
         const metrics = Object.keys(combinedHistory.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp');
 
-        const result = await getChartInfo(metrics, "all time", allInsights);
-        if (result.success && result.data) {
-            setDataByBattery(prev => ({
-                ...prev,
-                [batteryId]: {
-                    ...prev[batteryId],
-                    chartInfo: result.data
-                }
-            }));
+        if(metrics.length > 0) {
+          const result = await getChartInfo(metrics, "all time", allInsights);
+          if (result.success && result.data) {
+              setDataByBattery(prev => ({
+                  ...prev,
+                  [batteryId]: {
+                      ...prev[batteryId],
+                      chartInfo: result.data
+                  }
+              }));
+          }
         }
-    }
-
-    const firstNewBatteryId = Array.from(newDataByBattery.keys())[0];
-    if (firstNewBatteryId && !batteryIds.includes(firstNewBatteryId)) {
-      setActiveBatteryId(firstNewBatteryId);
-    } else if (!activeBatteryId && batteryIds.length > 0) {
-      setActiveBatteryId(batteryIds[0]);
-    } else if (!activeBatteryId && firstNewBatteryId) {
-      setActiveBatteryId(firstNewBatteryId);
     }
   };
   
-  const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
-  
-  const activeBatteryData = dataByBattery[activeBatteryId];
+  const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
   const chartInfo = activeBatteryData?.chartInfo || null;
 
@@ -134,7 +148,6 @@ export default function Home() {
     ? Object.keys(dataHistory.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp')
     : Object.keys(initialMetrics);
     
-
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <Header />
