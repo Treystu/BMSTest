@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useCallback } from 'react';
@@ -51,9 +52,10 @@ const getFormattedTick = (tick: any, format: string) => {
     return '';
 };
 
-const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
+// More than 2 hours is considered a significant gap
+const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; 
 
-// Metrics that are typically percentages (0-100)
+// Metrics that are typically percentages (0-100) are assigned to the left Y-axis
 const leftAxisMetrics = new Set(['soc', 'capacity']);
 
 
@@ -86,30 +88,36 @@ export function ChartDisplay({
     if (!data || data.length === 0) return { processedData: [], brushFriendlyData: [] };
     
     // 1. Filter by date range
-    let timeFilteredData: DataPoint[];
     const now = new Date();
-    switch (dateRange) {
-        case '1d': timeFilteredData = data.filter(d => d.timestamp >= subDays(now, 1).getTime()); break;
-        case '1w': timeFilteredData = data.filter(d => d.timestamp >= subWeeks(now, 1).getTime()); break;
-        case '1m': timeFilteredData = data.filter(d => d.timestamp >= subMonths(now, 1).getTime()); break;
-        default: timeFilteredData = data;
-    }
+    const timeFilteredData = data.filter(d => {
+        if (d.timestamp === null || d.timestamp === undefined) return false;
+        switch (dateRange) {
+            case '1d': return d.timestamp >= subDays(now, 1).getTime();
+            case '1w': return d.timestamp >= subWeeks(now, 1).getTime();
+            case '1m': return d.timestamp >= subMonths(now, 1).getTime();
+            default: return true;
+        }
+    });
     
     if (timeFilteredData.length < 2) {
       return { processedData: timeFilteredData, brushFriendlyData: timeFilteredData };
     }
 
-    // 2. Sort data chronologically - THIS IS CRITICAL
+    // 2. CRITICAL: Sort data chronologically. This is essential for correct line rendering.
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
 
-    // 3. Insert nulls for large time gaps to create visual breaks in the line
+    // 3. Create a clean dataset for the Brush component that does NOT contain nulls.
+    const brushData = [...sortedData];
+
+    // 4. Insert nulls for large time gaps to create visual breaks in the line chart.
     const dataWithGaps: ProcessedDataPoint[] = [sortedData[0]];
     for (let i = 1; i < sortedData.length; i++) {
         const prevPoint = sortedData[i-1];
         const currentPoint = sortedData[i];
         
         if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-            // Create a gap point. Recharts will not connect lines over a null value when connectNulls is false.
+            // Create a gap point. Recharts will not connect lines over a null value.
+            // This point is purely for creating a visual break.
             const gapPoint: ProcessedDataPoint = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
             activeMetrics.forEach(metric => {
                 gapPoint[metric] = null;
@@ -119,9 +127,6 @@ export function ChartDisplay({
         dataWithGaps.push(currentPoint);
     }
     
-    // 4. Create a separate data array for the brush that does NOT contain nulls
-    const brushData = sortedData;
-
     return { processedData: dataWithGaps, brushFriendlyData: brushData };
   }, [data, dateRange, activeMetrics]);
   
@@ -139,41 +144,41 @@ export function ChartDisplay({
   const handleBrushChange = useCallback((range: BrushRange | undefined) => {
     if (range?.startIndex === undefined || range?.endIndex === undefined) {
       onBrushChange(null);
-    } else {
-      // The brush provides indices relative to its own data (brushFriendlyData)
-      // We need to map these back to the original `data` array to find the correct timestamps.
-      const brushSubset = brushFriendlyData.slice(range.startIndex, range.endIndex + 1);
+      return;
+    } 
+    
+    // The brush provides indices relative to its own data (brushFriendlyData)
+    const brushSubset = brushFriendlyData.slice(range.startIndex, range.endIndex + 1);
 
-      if(brushSubset.length > 0) {
-        const firstTimestamp = brushSubset[0]!.timestamp;
-        const lastTimestamp = brushSubset[brushSubset.length - 1]!.timestamp;
-        
-        // Find the corresponding indices in the original, unfiltered `data` array.
-        const startIndexInOriginal = data.findIndex(d => d.timestamp >= firstTimestamp);
-        let endIndexInOriginal = -1;
-        for (let i = data.length - 1; i >= 0; i--) {
-            if (data[i].timestamp <= lastTimestamp) {
-                endIndexInOriginal = i;
-                break;
-            }
-        }
-        
-        if(startIndexInOriginal !== -1 && endIndexInOriginal !== -1) {
-            onBrushChange({startIndex: startIndexInOriginal, endIndex: endIndexInOriginal});
-        } else {
-            onBrushChange(null);
-        }
-
-      } else {
-        onBrushChange(null);
+    if(brushSubset.length > 0) {
+      const firstTimestamp = brushSubset[0]!.timestamp;
+      const lastTimestamp = brushSubset[brushSubset.length - 1]!.timestamp;
+      
+      // Find the corresponding indices in the original, unfiltered `data` array.
+      const startIndexInOriginal = data.findIndex(d => d.timestamp >= firstTimestamp);
+      let endIndexInOriginal = -1;
+      for (let i = data.length - 1; i >= 0; i--) {
+          if (data[i].timestamp <= lastTimestamp) {
+              endIndexInOriginal = i;
+              break;
+          }
       }
+      
+      if(startIndexInOriginal !== -1 && endIndexInOriginal !== -1) {
+          onBrushChange({startIndex: startIndexInOriginal, endIndex: endIndexInOriginal});
+      } else {
+          onBrushChange(null);
+      }
+
+    } else {
+      onBrushChange(null);
     }
   }, [onBrushChange, brushFriendlyData, data]);
 
   const CustomTooltipContent = (props: any) => {
     const { active, payload, label } = props;
     if (active && payload && payload.length) {
-        // Check the first payload item. If it's null, we're in a gap, so don't show the tooltip.
+        // Check if the payload is from a null-gap point.
         if(payload[0].payload[payload[0].dataKey] === null) return null; 
 
         return (
@@ -181,7 +186,7 @@ export function ChartDisplay({
                 <p className="font-bold">{getFormattedTick(label, "MMM d, yyyy, h:mm:ss a")}</p>
                 {payload.map((p: any) => {
                     const metric = p.dataKey;
-                    const color = p.color;
+                    const color = chartConfig[metric]?.color || p.color;
                     const value = p.value;
                     if (value === null || value === undefined) return null;
                     
@@ -211,7 +216,7 @@ export function ChartDisplay({
     );
   }
 
-  if (!batteryId || data.length === 0) {
+  if (!batteryId || processedData.length === 0) {
     return (
         <Card>
             <CardHeader>
@@ -220,7 +225,7 @@ export function ChartDisplay({
             </CardHeader>
             <CardContent className="flex aspect-video w-full items-center justify-center rounded-lg border-dashed border-2 bg-muted/50">
                 <p className="text-muted-foreground">
-                  { !batteryId ? "Select a battery to view its chart." : "No data to display yet for this battery." }
+                  { !batteryId ? "Select a battery to view its chart." : "No data to display for the selected range." }
                 </p>
             </CardContent>
         </Card>
@@ -254,8 +259,9 @@ export function ChartDisplay({
                       // Don't render a tick for our null-gap data points
                       if (processedData[index]?.[activeMetrics[0]] === null) return "";
 
-                      const visibleRange = processedData.length > 1 ? processedData[processedData.length-1].timestamp - processedData[0].timestamp : 0;
+                      const visibleRange = processedData[processedData.length-1].timestamp - processedData[0].timestamp;
                       const oneDay = 24 * 60 * 60 * 1000;
+                      // Dynamically choose format based on the visible time range
                       const format = visibleRange <= oneDay * 2 ? 'HH:mm' : 'MMM d';
                       return getFormattedTick(value, format);
                     }}
@@ -270,7 +276,7 @@ export function ChartDisplay({
                     content={<CustomTooltipContent />}
                 />
                 <Legend />
-                {leftMetrics.map((metric, index) => (
+                {leftMetrics.map((metric) => (
                      <Line
                         key={metric}
                         yAxisId="left"
@@ -312,3 +318,5 @@ export function ChartDisplay({
     </Card>
   );
 }
+
+    
