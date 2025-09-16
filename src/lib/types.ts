@@ -18,9 +18,21 @@ export type ExtractionResult = {
   timestamp: number;
 };
 
+export type HourlyAnalysis = {
+  hour: number;
+  avgCurrent: number;
+  avgSOC: number;
+};
+
+export type BatteryAnalysis = {
+  hourlyAverages: HourlyAnalysis[];
+  dayOverDayTrend: string;
+}
+
 export type BatteryData = {
   history: DataPoint[];
   chartInfo: ChartInfo | null;
+  analysis?: BatteryAnalysis | null;
 }
 
 export type BatteryDataMap = Record<string, BatteryData>;
@@ -34,3 +46,5 @@ export type ImageFile = {
   status: ImageFileStatus;
   error?: string;
 };
+
+    

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap } from "@/lib/types";
+import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap, BatteryAnalysis } from "@/lib/types";
 import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
 import { DataDisplay } from "@/components/data-display";
@@ -9,9 +9,10 @@ import { ChartControls } from "@/components/chart-controls";
 import { ChartDisplay, type BrushRange } from "@/components/chart-display";
 import { getChartInfo } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { formatInTimeZone } from 'date-fns-tz';
+import { AnalysisDisplay } from "@/components/analysis-display";
 
 
 const initialMetrics: SelectedMetrics = {
@@ -103,6 +104,18 @@ export default function Home() {
       }
   }, [activeBatteryId, dataByBattery, toast]);
 
+  const handleAnalysisUpdate = useCallback((analysis: BatteryAnalysis) => {
+    if (!activeBatteryId) return;
+
+    setDataByBattery(prev => ({
+      ...prev,
+      [activeBatteryId]: {
+        ...prev[activeBatteryId],
+        analysis,
+      }
+    }));
+  }, [activeBatteryId]);
+
   useEffect(() => {
     if (batteryIds.length > 0 && !activeBatteryId) {
         setActiveBatteryId(batteryIds[0]);
@@ -191,6 +204,7 @@ export default function Home() {
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
   const chartInfo = activeBatteryData?.chartInfo || null;
+  const analysis = activeBatteryData?.analysis || null;
 
   const latestDataPoint = useMemo(() => {
     if (dataHistory.length > 0) {
@@ -285,50 +299,69 @@ export default function Home() {
                     </CardContent>
                 </Card>
             )}
-            {brushData && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Selected Range Analysis</CardTitle>
-                        <CardDescription>
-                            Average values from {brushData.startDate} to {brushData.endDate}.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            {Object.entries(brushData.stats).map(([metric, data]) => (
-                               data.count > 0 && (
-                                <div key={metric}>
-                                    <p className="font-semibold capitalize">{metric.replace(/_/g, ' ')}</p>
-                                    <p className="text-muted-foreground">{data.average.toFixed(3)}</p>
-                                </div>
-                               )
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-            <ChartControls
-              availableMetrics={availableMetrics}
-              selectedMetrics={selectedMetrics}
-              setSelectedMetrics={setSelectedMetrics}
-              dateRange={dateRange}
-              setDateRange={setDateRange}
-              onGenerateSummary={handleGenerateSummary}
-              isGeneratingSummary={isGeneratingSummary}
-              hasData={dataHistory.length > 0}
-            />
-            <ChartDisplay
-              batteryId={activeBatteryId || ""}
-              data={dataHistory}
-              selectedMetrics={selectedMetrics}
-              dateRange={dateRange}
-              chartInfo={chartInfo}
-              isLoading={isLoading && dataHistory.length === 0}
-              onBrushChange={handleBrushChange}
-            />
+            
+            <Tabs defaultValue="visualization">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="visualization">Visualization</TabsTrigger>
+                <TabsTrigger value="analysis">Analysis</TabsTrigger>
+              </TabsList>
+              <TabsContent value="visualization" className="space-y-6 mt-6">
+                {brushData && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Selected Range Analysis</CardTitle>
+                            <CardDescription>
+                                Average values from {brushData.startDate} to {brushData.endDate}.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                {Object.entries(brushData.stats).map(([metric, data]) => (
+                                data.count > 0 && (
+                                    <div key={metric}>
+                                        <p className="font-semibold capitalize">{metric.replace(/_/g, ' ')}</p>
+                                        <p className="text-muted-foreground">{data.average.toFixed(3)}</p>
+                                    </div>
+                                )
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+                <ChartControls
+                  availableMetrics={availableMetrics}
+                  selectedMetrics={selectedMetrics}
+                  setSelectedMetrics={setSelectedMetrics}
+                  dateRange={dateRange}
+                  setDateRange={setDateRange}
+                  onGenerateSummary={handleGenerateSummary}
+                  isGeneratingSummary={isGeneratingSummary}
+                  hasData={dataHistory.length > 0}
+                />
+                <ChartDisplay
+                  batteryId={activeBatteryId || ""}
+                  data={dataHistory}
+                  selectedMetrics={selectedMetrics}
+                  dateRange={dateRange}
+                  chartInfo={chartInfo}
+                  isLoading={isLoading && dataHistory.length === 0}
+                  onBrushChange={handleBrushChange}
+                />
+              </TabsContent>
+              <TabsContent value="analysis" className="mt-6">
+                <AnalysisDisplay 
+                  batteryId={activeBatteryId}
+                  dataHistory={dataHistory}
+                  analysis={analysis}
+                  onAnalysisUpdate={handleAnalysisUpdate}
+                />
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </main>
     </div>
   );
 }
+
+    

@@ -2,6 +2,7 @@
 
 import { extractAndStructureData } from '@/ai/flows/extract-and-structure-data';
 import { suggestChartTitles } from '@/ai/flows/suggest-chart-titles';
+import { analyzeBatteryData, type AnalyzeBatteryDataInput } from '@/ai/flows/analyze-battery-data';
 
 function parseTimestampFromFilename(filename: string): number {
   // Try to extract from formats like:
@@ -84,3 +85,21 @@ export async function getChartInfo(metrics: string[], timeRange: string, insight
         };
     }
 }
+
+export async function getBatteryAnalysis(input: AnalyzeBatteryDataInput) {
+    try {
+        const analysis = await analyzeBatteryData(input);
+        return {
+            success: true,
+            data: analysis
+        };
+    } catch (error) {
+        console.error('Error getting battery analysis:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : "An unknown error occurred during analysis generation."
+        };
+    }
+}
+
+    
