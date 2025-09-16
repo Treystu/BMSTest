@@ -48,9 +48,17 @@ const getFormattedTimestamp = (ts: number, rangeInMs: number) => {
 
 const CustomTooltipContent = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
+        const point = payload[0].payload;
+        
         return (
             <div className="p-3 bg-background border rounded-lg shadow-xl text-sm space-y-2">
                 <p className="font-bold">{formatInTimeZone(new Date(label), 'UTC', "MMM d, yyyy, h:mm:ss a")}</p>
+                {point.type === 'aggregate' && point.stats ? (
+                     <div className="text-xs text-muted-foreground border-b pb-2 mb-2">
+                        This is an aggregate of {point.stats[payload[0].dataKey]?.count || 0} data points.
+                     </div>
+                ) : null}
+
                 {payload.map((p: any) => (
                     <div key={p.dataKey} style={{ color: p.color }} className="flex justify-between items-center">
                         <p className="capitalize font-semibold">{p.dataKey}:</p> 
@@ -87,7 +95,7 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
         }
     });
 
-    return { leftMetrics, rightMetrics };
+    return { leftMetrics: left, rightMetrics: right };
   }, [selectedMetrics]);
 
   const visibleRange = useMemo(() => {
