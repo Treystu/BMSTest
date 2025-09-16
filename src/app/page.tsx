@@ -12,70 +12,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
-const DUPLICATE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
-
 const initialMetrics: SelectedMetrics = {
   soc: true,
   voltage: true,
   current: true,
   capacity: true,
   temperature: true,
-};
-
-const averageDataPoints = (points: DataPoint[]): DataPoint[] => {
-    if (points.length < 2) {
-        return points;
-    }
-
-    const sortedPoints = [...points].sort((a, b) => a.timestamp - b.timestamp);
-    const merged: DataPoint[] = [];
-    let currentGroup: DataPoint[] = [sortedPoints[0]];
-
-    for (let i = 1; i < sortedPoints.length; i++) {
-        const currentPoint = sortedPoints[i];
-        const lastPointInGroup = currentGroup[currentGroup.length - 1];
-
-        if (currentPoint.timestamp - lastPointInGroup.timestamp <= DUPLICATE_THRESHOLD_MS) {
-            currentGroup.push(currentPoint);
-        } else {
-            merged.push(mergeGroup(currentGroup));
-            currentGroup = [currentPoint];
-        }
-    }
-    merged.push(mergeGroup(currentGroup));
-
-    console.log(`Averaged ${points.length} points into ${merged.length} points.`);
-    return merged;
-};
-
-const mergeGroup = (group: DataPoint[]): DataPoint => {
-    if (group.length === 1) {
-        return group[0];
-    }
-
-    const totalPoints = group.length;
-    const mergedPoint: DataPoint = { timestamp: 0 };
-    const valueCounts: { [key: string]: number } = {};
-
-    mergedPoint.timestamp = group[0].timestamp;
-
-    for (const point of group) {
-        for (const key in point) {
-            if (key !== 'timestamp') {
-                const value = point[key];
-                if (typeof value === 'number' && !isNaN(value)) {
-                    mergedPoint[key] = (mergedPoint[key] || 0) + value;
-                    valueCounts[key] = (valueCounts[key] || 0) + 1;
-                }
-            }
-        }
-    }
-
-    for (const key in valueCounts) {
-        mergedPoint[key] /= valueCounts[key];
-    }
-
-    return mergedPoint;
 };
 
 const sanitizeMetricKey = (key: string): string => {
@@ -177,13 +119,12 @@ export default function Home() {
         setDataByBattery(prev => {
             const existingHistory = prev[batteryId]?.history || [];
             const combinedHistory = [...existingHistory, dataPoint];
-            const averagedHistory = averageDataPoints(combinedHistory);
             
             return {
                 ...prev,
                 [batteryId]: {
                     ...prev[batteryId],
-                    history: averagedHistory
+                    history: combinedHistory
                 }
             };
         });
@@ -214,7 +155,7 @@ export default function Home() {
             mergedData[batteryId] = {
                 ...mergedData[batteryId],
                 ...newData[batteryId],
-                history: averageDataPoints(combined)
+                history: combined
             }
             setLastUpdatedBattery(batteryId);
         }
