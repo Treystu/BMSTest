@@ -7,21 +7,14 @@ export async function processImage(photoDataUri: string) {
   try {
     const { extractedData } = await extractAndStructureData({ photoDataUri });
     
-    const parsedData = JSON.parse(extractedData);
-    const metrics = Object.keys(parsedData).filter(k => typeof parsedData[k] === 'number');
-    const insights = `The following data was extracted: ${Object.entries(parsedData).map(([k,v]) => `${k}: ${v}`).join(', ')}.`;
-
-    const chartInfo = await suggestChartTitles({
-        metrics,
-        timeRange: 'Single data point',
-        insights,
-    });
+    // We are returning the raw extracted data string.
+    // The chart title generation will be handled on the client-side 
+    // after all images in a batch are processed.
     
     return {
       success: true,
       data: {
         extractedData,
-        chartInfo,
       }
     };
   } catch (error) {
@@ -31,4 +24,24 @@ export async function processImage(photoDataUri: string) {
       error: error instanceof Error ? error.message : "An unknown error occurred during data extraction."
     };
   }
+}
+
+export async function getChartInfo(metrics: string[], timeRange: string, insights: string) {
+    try {
+        const chartInfo = await suggestChartTitles({
+            metrics,
+            timeRange,
+            insights,
+        });
+        return {
+            success: true,
+            data: chartInfo
+        };
+    } catch (error) {
+        console.error('Error getting chart info:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : "An unknown error occurred during chart info generation."
+        };
+    }
 }

@@ -15,6 +15,7 @@ import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
 import { subHours, subDays, subWeeks, subMonths, format } from 'date-fns';
 
 type ChartDisplayProps = {
+  batteryId: string;
   data: DataPoint[];
   selectedMetrics: SelectedMetrics;
   timeRange: string;
@@ -31,6 +32,7 @@ const lineColors = [
 ];
 
 export function ChartDisplay({
+  batteryId,
   data,
   selectedMetrics,
   timeRange,
@@ -94,7 +96,7 @@ export function ChartDisplay({
     );
   }
 
-  if (data.length === 0) {
+  if (!batteryId || data.length === 0) {
     return (
         <Card>
             <CardHeader>
@@ -102,7 +104,9 @@ export function ChartDisplay({
                 <CardDescription>Your data visualization will appear here.</CardDescription>
             </CardHeader>
             <CardContent className="flex aspect-video w-full items-center justify-center rounded-lg border-dashed border-2 bg-muted/50">
-                <p className="text-muted-foreground">No data to display yet.</p>
+                <p className="text-muted-foreground">
+                  { !batteryId ? "Select a battery to view its chart." : "No data to display yet for this battery." }
+                </p>
             </CardContent>
         </Card>
     )
@@ -111,7 +115,7 @@ export function ChartDisplay({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{chartInfo?.title || 'Trend Chart'}</CardTitle>
+        <CardTitle>{chartInfo?.title || `Trends for ${batteryId}`}</CardTitle>
         <CardDescription>
           {chartInfo?.description || 'Time-based trend of extracted metrics.'}
         </CardDescription>
