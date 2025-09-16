@@ -59,14 +59,14 @@ const suggestChartTitlesFlow = ai.defineFlow(
         return output!;
       } catch (error: any) {
         attempts++;
-        // Check for 503 Service Unavailable or similar overload errors
-        if (error.status === 503 || (error.message && error.message.includes('503'))) {
+        // Check for retryable errors like 503 Service Unavailable or 429 Too Many Requests
+        if (error.status === 503 || error.status === 429) {
           if (attempts >= maxAttempts) {
             console.error(`[suggestChartTitlesFlow] Max retry attempts reached for input:`, input);
             throw new Error(`The model is currently overloaded. Please try again later. (Max retries reached)`);
           }
           const delay = initialDelay * Math.pow(2, attempts - 1) + Math.random() * 1000;
-          console.log(`[suggestChartTitlesFlow] Model overloaded. Retrying in ${Math.round(delay / 1000)}s... (Attempt ${attempts})`);
+          console.log(`[suggestChartTitlesFlow] Model overloaded or rate limited. Retrying in ${Math.round(delay / 1000)}s... (Attempt ${attempts})`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           // For non-retryable errors, re-throw immediately

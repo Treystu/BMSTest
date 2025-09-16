@@ -92,7 +92,7 @@ export function ImageUploader({
     let zipFile: File | null = null;
     
     for (const file of Array.from(files)) {
-      if (file.type === 'application/zip') {
+      if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
         zipFile = file;
         break; 
       }
@@ -108,25 +108,26 @@ export function ImageUploader({
                 const zipEntry = zip.files[relativePath];
                 if (!zipEntry.dir && isImageFile(zipEntry.name)) {
                     const blob = await zipEntry.async('blob');
+                    // Use the full path within the zip as the name to avoid collisions
                     const file = new File([blob], zipEntry.name, { type: blob.type });
                     newRawFiles.push({ file, name: zipEntry.name });
                 }
             }
         } catch (error) {
             console.error("Error unzipping file:", error);
-toast({ title: "ZIP File Error", description: "There was an error processing the ZIP file.", variant: 'destructive' });
+            toast({ title: "ZIP File Error", description: "There was an error processing the ZIP file.", variant: 'destructive' });
             return;
         }
     }
     
-    const fileToImageFile = (file: File): Promise<ImageFile> => {
+    const fileToImageFile = (file: File, name: string): Promise<ImageFile> => {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onloadend = () => {
                 resolve({ 
-                    id: `${file.name}-${new Date().getTime()}`,
+                    id: `${name}-${new Date().getTime()}`,
                     preview: reader.result as string, 
-                    name: file.name,
+                    name: name,
                     status: 'queued' 
                 });
             };
@@ -134,7 +135,7 @@ toast({ title: "ZIP File Error", description: "There was an error processing the
         });
     };
 
-    const newImageFilePromises = newRawFiles.map(f => fileToImageFile(f.file));
+    const newImageFilePromises = newRawFiles.map(f => fileToImageFile(f.file, f.name));
     const newImageFiles = await Promise.all(newImageFilePromises);
     
     const existingNames = imageFiles.map(f => f.name);
