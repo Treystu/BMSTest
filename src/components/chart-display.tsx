@@ -72,7 +72,7 @@ export function ChartDisplay({
     return sortedData.filter(d => d.timestamp >= startTime);
   }, [sortedData, dateRange]);
   
-  const activeMetrics = useMemo(() => Object.keys(selectedMetrics).filter(k => selectedMetrics[k]), [selectedMetrics]);
+  const activeMetrics = useMemo(() => Object.keys(selectedMetrics).filter(k => selectedMetrics[k as keyof SelectedMetrics]), [selectedMetrics]);
   
   const chartConfig = useMemo(() => {
     const config: any = {};

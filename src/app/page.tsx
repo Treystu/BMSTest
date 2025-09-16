@@ -22,13 +22,14 @@ const initialMetrics: SelectedMetrics = {
 };
 
 const sanitizeMetricKey = (key: string): string => {
-    const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/gi, '');
+    const lowerKey = key.toLowerCase();
+    if (lowerKey === 'voltage') return 'voltage'; // Exact match
     if (lowerKey.includes('soc')) return 'soc';
-    if (lowerKey.includes('volt')) return 'voltage';
+    if (lowerKey.includes('volt')) return 'voltage'; // Broad match for other variations
     if (lowerKey.includes('curr')) return 'current';
     if (lowerKey.includes('cap')) return 'capacity';
     if (lowerKey.includes('temp')) return 'temperature';
-    return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/_+/g, '_');
+    return lowerKey.replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
 };
 
 
@@ -195,7 +196,7 @@ export default function Home() {
   }, [dataHistory]);
 
   const brushData = useMemo(() => {
-    if (!brushRange || !brushRange.startIndex || !brushRange.endIndex || !activeBatteryId) return null;
+    if (!brushRange || brushRange.startIndex === undefined || brushRange.endIndex === undefined || !activeBatteryId) return null;
 
     const sortedData = [...dataHistory].sort((a, b) => a.timestamp - b.timestamp);
     const slicedData = sortedData.slice(brushRange.startIndex, brushRange.endIndex + 1);
@@ -203,7 +204,7 @@ export default function Home() {
     if (slicedData.length === 0) return null;
 
     const stats: { [key: string]: { sum: number; count: number; average: number } } = {};
-    const activeMetrics = Object.keys(selectedMetrics).filter(k => selectedMetrics[k]);
+    const activeMetrics = Object.keys(selectedMetrics).filter(k => selectedMetrics[k as keyof SelectedMetrics]);
 
     activeMetrics.forEach(metric => {
         stats[metric] = { sum: 0, count: 0, average: 0 };

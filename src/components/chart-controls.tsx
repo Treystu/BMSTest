@@ -78,10 +78,9 @@ export function ChartControls({
     const extra = new Set<string>();
     
     availableMetrics.forEach(m => {
-        const lowerM = m.toLowerCase();
         let isMain = false;
         for (const sm of standardMetrics) {
-            if (lowerM.includes(sm)) {
+            if (m === sm) {
                 main.add(m);
                 isMain = true;
                 break;
