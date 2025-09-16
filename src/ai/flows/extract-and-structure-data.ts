@@ -20,6 +20,7 @@ const ExtractAndStructureDataInputSchema = z.object({
 export type ExtractAndStructureDataInput = z.infer<typeof ExtractAndStructureDataInputSchema>;
 
 const ExtractAndStructureDataOutputSchema = z.object({
+  batteryId: z.string().describe('A unique identifier for the battery, extracted from the image. This could be a serial number or model number.'),
   extractedData: z.string().describe('The extracted and structured data from the image.'),
 });
 export type ExtractAndStructureDataOutput = z.infer<typeof ExtractAndStructureDataOutputSchema>;
@@ -36,11 +37,13 @@ const prompt = ai.definePrompt({
 
 You will use OCR to extract data from the image provided, interpret the data, and structure it in a JSON format.
 
-Extract data such as SOC, Voltage, Current, Capacity, Temperatures, and other metrics from the image.
+First, identify a unique identifier for the battery from the image. This could be a serial number, a model number, or any other distinct text string that can be used to uniquely identify this specific battery. Assign this to the 'batteryId' field.
+
+Then, extract data such as SOC, Voltage, Current, Capacity, Temperatures, and other metrics from the image.
 
 Image: {{media url=photoDataUri}}
 
-Return the extracted and structured data in JSON format.  Do not include any explanation or preamble.
+Return the extracted battery ID and the structured data in JSON format. Do not include any explanation or preamble.
 `,
 });
 

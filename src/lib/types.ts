@@ -11,3 +11,8 @@ export type ChartInfo = {
 export type SelectedMetrics = {
   [key: string]: boolean;
 };
+
+export type ExtractionResult = {
+  batteryId: string;
+  extractedData: string;
+};

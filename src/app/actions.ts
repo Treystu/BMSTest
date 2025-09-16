@@ -5,16 +5,13 @@ import { suggestChartTitles } from '@/ai/flows/suggest-chart-titles';
 
 export async function processImage(photoDataUri: string) {
   try {
-    const { extractedData } = await extractAndStructureData({ photoDataUri });
-    
-    // We are returning the raw extracted data string.
-    // The chart title generation will be handled on the client-side 
-    // after all images in a batch are processed.
+    const extractionResult = await extractAndStructureData({ photoDataUri });
     
     return {
       success: true,
       data: {
-        extractedData,
+        batteryId: extractionResult.batteryId,
+        extractedData: extractionResult.extractedData,
       }
     };
   } catch (error) {

@@ -7,26 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/app/actions';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import type { ExtractionResult } from '@/lib/types';
 
 
 type ImageUploaderProps = {
-  onDataExtracted: (batteryId: string, data: { extractedData: string }[]) => void;
+  onUploadComplete: (results: { success: boolean; data?: ExtractionResult; error?: string }[]) => void;
   setIsLoading: (isLoading: boolean) => void;
-  activeBatteryId: string;
-  setActiveBatteryId: (id: string) => void;
-  batteryIds: string[];
+  isLoading: boolean;
 };
 
-export function ImageUploader({ onDataExtracted, setIsLoading, activeBatteryId, setActiveBatteryId, batteryIds }: ImageUploaderProps) {
+export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: ImageUploaderProps) {
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -35,7 +25,7 @@ export function ImageUploader({ onDataExtracted, setIsLoading, activeBatteryId, 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      if (files.length > 10) {
+      if (imagePreviews.length + files.length > 10) {
         toast({
           title: 'Too many files',
           description: 'You can upload a maximum of 10 files at a time.',
@@ -64,6 +54,12 @@ export function ImageUploader({ onDataExtracted, setIsLoading, activeBatteryId, 
 
   const handleClearImage = (index: number) => {
     setImagePreviews(previews => previews.filter((_, i) => i !== index));
+    if (fileInputRef.current) {
+        const dt = new DataTransfer();
+        const remainingFiles = Array.from(fileInputRef.current.files!).filter((_,i) => i !== index);
+        remainingFiles.forEach(file => dt.items.add(file));
+        fileInputRef.current.files = dt.files;
+    }
   };
   
   const handleClearAll = () => {
@@ -82,24 +78,16 @@ export function ImageUploader({ onDataExtracted, setIsLoading, activeBatteryId, 
       });
       return;
     }
-    if (!activeBatteryId) {
-      toast({
-        title: 'No Battery ID',
-        description: 'Please enter or select a battery ID.',
-        variant: 'destructive',
-      });
-      return;
-    }
 
     setIsLoading(true);
     startTransition(async () => {
       const results = await Promise.all(imagePreviews.map(preview => processImage(preview)));
       
-      const successfulExtractions = results.filter(r => r.success).map(r => r.data!);
+      const successfulExtractions = results.filter(r => r.success);
       const failedExtractions = results.filter(r => !r.success);
 
       if (successfulExtractions.length > 0) {
-        onDataExtracted(activeBatteryId, successfulExtractions);
+        onUploadComplete(results);
         toast({
           title: 'Data Extraction Complete',
           description: `${successfulExtractions.length} out of ${results.length} images processed successfully.`,
@@ -109,7 +97,7 @@ export function ImageUploader({ onDataExtracted, setIsLoading, activeBatteryId, 
       if (failedExtractions.length > 0) {
         toast({
           title: 'Some Extractions Failed',
-          description: `${failedExtractions.length} images could not be processed.`,
+          description: `${failedExtractions.length} images could not be processed. Details: ${failedExtractions.map(f => f.error).join(', ')}`,
           variant: 'destructive',
         });
       }
@@ -118,39 +106,14 @@ export function ImageUploader({ onDataExtracted, setIsLoading, activeBatteryId, 
       setIsLoading(false);
     });
   };
-  
-  const isLoading = isPending;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>1. Upload Images</CardTitle>
-        <CardDescription>Upload up to 10 images for a specific battery.</CardDescription>
+        <CardDescription>Upload up to 10 images. The app will automatically identify the battery and sort the data.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="grid gap-2">
-            <Label htmlFor="batteryId">Battery Identifier</Label>
-            <div className="flex gap-2">
-                <Input 
-                    id="batteryId"
-                    placeholder="Enter new or select existing ID"
-                    value={activeBatteryId}
-                    onChange={(e) => setActiveBatteryId(e.target.value)}
-                    className="w-full"
-                />
-                <Select onValueChange={setActiveBatteryId} value={activeBatteryId} >
-                    <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Existing" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {batteryIds.map(id => (
-                            <SelectItem key={id} value={id}>{id}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-        </div>
-
         <div className="relative w-full border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50 overflow-hidden p-2 min-h-[150px]">
           {imagePreviews.length > 0 ? (
              <div className="grid grid-cols-3 md:grid-cols-5 gap-2 w-full">
@@ -198,11 +161,11 @@ export function ImageUploader({ onDataExtracted, setIsLoading, activeBatteryId, 
                 <Trash2 className="mr-2 h-4 w-4" /> Clear
             </Button>
         </div>
-         <Button onClick={handleSubmit} disabled={isLoading || imagePreviews.length === 0 || !activeBatteryId} className="w-full">
-              {isLoading ? (
+         <Button onClick={handleSubmit} disabled={isLoading || isPending || imagePreviews.length === 0} className="w-full">
+              {isLoading || isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
-              {isLoading ? `Extracting ${imagePreviews.length} images...` : `Extract Data from ${imagePreviews.length} Images`}
+              {isLoading || isPending ? `Extracting ${imagePreviews.length} images...` : `Extract Data from ${imagePreviews.length} Images`}
         </Button>
       </CardContent>
     </Card>
