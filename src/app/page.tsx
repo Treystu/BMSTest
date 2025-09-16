@@ -110,9 +110,6 @@ export default function Home() {
   const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
 
   useEffect(() => {
-    // This effect ensures that if the active battery is removed,
-    // we select a new one. It also selects the first battery
-    // when data first loads.
     if (activeBatteryId && !dataByBattery[activeBatteryId]) {
       setActiveBatteryId(batteryIds.length > 0 ? batteryIds[0] : null);
     } else if (!activeBatteryId && batteryIds.length > 0) {
@@ -241,8 +238,6 @@ export default function Home() {
         return updatedData;
     });
 
-    // Handle selection of a new battery and trigger chart updates
-    // outside of the main state update to avoid render errors.
     setTimeout(() => {
         if (firstNewBatteryId) {
             setActiveBatteryId(firstNewBatteryId);
@@ -266,7 +261,6 @@ export default function Home() {
 
   const latestDataPoint = useMemo(() => {
     if (dataHistory.length > 0) {
-      // Find the item with the most recent timestamp
       return dataHistory.reduce((latest, current) => {
         return current.timestamp > latest.timestamp ? current : latest;
       });
