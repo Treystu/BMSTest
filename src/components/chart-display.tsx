@@ -211,10 +211,10 @@ export function ChartDisplay({
                     />}
                 />
                  <ChartLegend content={<ChartLegendContent />} />
-                {Object.keys(chartConfig).map((metric) => (
-                    segmentedData.map((segment, index) => (
+                {Object.keys(chartConfig).map((metric) => 
+                    segmentedData.map((segment) => (
                         <Line
-                            key={`${metric}-${index}`}
+                            key={`${metric}-${segment[0]?.timestamp}`}
                             type="monotone"
                             data={segment}
                             dataKey={metric}
@@ -224,7 +224,7 @@ export function ChartDisplay({
                             animationDuration={300}
                         />
                     ))
-                ))}
+                )}
                 <Brush 
                   dataKey="timestamp"
                   height={30}
