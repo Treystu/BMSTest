@@ -34,6 +34,20 @@ const sanitizeMetricKey = (key: string): string => {
     return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
 };
 
+const getFormattedDate = (timestamp: number | Date | string | undefined, formatStr: string): string => {
+    if (timestamp === undefined || timestamp === null) return "Invalid Date";
+    try {
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) {
+            return "Invalid Date";
+        }
+        return formatInTimeZone(date, 'UTC', formatStr);
+    } catch (e) {
+        console.error("Date formatting error:", e);
+        return "Invalid Date";
+    }
+};
+
 export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<BatteryDataMap>({});
   const [activeBatteryId, setActiveBatteryId] = useState<string | null>(null);
@@ -122,7 +136,7 @@ export default function Home() {
         
         setDataByBattery(prev => {
             const existingHistory = prev[batteryId]?.history || [];
-            const combinedHistory = [...existingHistory, dataPoint];
+            const combinedHistory = [...existingHistory, dataPoint].sort((a, b) => a.timestamp - b.timestamp);
             
             return {
                 ...prev,
@@ -153,7 +167,7 @@ export default function Home() {
         for (const batteryId in newData) {
             const newHistory = newData[batteryId].history || [];
             const existingHistory = mergedData[batteryId]?.history || [];
-            const combined = [...existingHistory, ...newHistory];
+            const combined = [...existingHistory, ...newHistory].sort((a, b) => a.timestamp - b.timestamp);
             
             // Ensure chartInfo from imported data is preserved.
             const existingChartInfo = mergedData[batteryId]?.chartInfo;
@@ -205,8 +219,7 @@ export default function Home() {
   const brushData = useMemo(() => {
     if (!brushRange || brushRange.startIndex === undefined || brushRange.endIndex === undefined || !activeBatteryId) return null;
 
-    const sortedData = [...dataHistory].sort((a, b) => a.timestamp - b.timestamp);
-    const slicedData = sortedData.slice(brushRange.startIndex, brushRange.endIndex + 1);
+    const slicedData = dataHistory.slice(brushRange.startIndex, brushRange.endIndex + 1);
     
     if (slicedData.length === 0) return null;
 
@@ -232,20 +245,9 @@ export default function Home() {
         }
     });
 
-    const getFormattedDate = (timestamp: number) => {
-      try {
-        if (typeof timestamp !== 'number' || isNaN(timestamp)) {
-            return "Invalid Date";
-        }
-        return formatInTimeZone(new Date(timestamp), 'UTC', "MMM d, yyyy, h:mm:ss a");
-      } catch (e) {
-          return "Invalid Date";
-      }
-    };
-
     return {
-        startDate: getFormattedDate(slicedData[0].timestamp),
-        endDate: getFormattedDate(slicedData[slicedData.length - 1].timestamp),
+        startDate: getFormattedDate(slicedData[0].timestamp, "MMM d, yyyy, h:mm:ss a"),
+        endDate: getFormattedDate(slicedData[slicedData.length - 1].timestamp, "MMM d, yyyy, h:mm:ss a"),
         stats
     };
   }, [brushRange, dataHistory, selectedMetrics, activeBatteryId]);
@@ -323,6 +325,7 @@ export default function Home() {
               chartInfo={chartInfo}
               isLoading={isLoading && dataHistory.length === 0}
               onBrushChange={handleBrushChange}
+              getFormattedDate={getFormattedDate}
             />
           </div>
         </div>

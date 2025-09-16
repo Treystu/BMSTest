@@ -13,8 +13,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Brush } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
 import { subDays, subWeeks, subMonths } from 'date-fns';
-import { format as formatInTimeZone } from 'date-fns-tz';
-
 
 export type BrushRange = {
   startIndex?: number;
@@ -29,6 +27,7 @@ type ChartDisplayProps = {
   chartInfo: ChartInfo | null;
   isLoading: boolean;
   onBrushChange: (range: BrushRange | null) => void;
+  getFormattedDate: (value: any, format: string) => string;
 };
 
 const lineColors = [
@@ -39,27 +38,6 @@ const lineColors = [
   "hsl(var(--chart-5))",
 ];
 
-const getFormattedTick = (value: any, format: string): string => {
-  if (typeof value !== 'number' || isNaN(value)) {
-    // If value is not a valid number, return it as a string.
-    // Recharts might pass other types, so this is a safe fallback.
-    return String(value);
-  }
-  try {
-    const date = new Date(value);
-    if (isNaN(date.getTime())) {
-      // If the number doesn't convert to a valid date, return original value.
-      return String(value);
-    }
-    return formatInTimeZone(date, 'UTC', format);
-  } catch (e) {
-    // In case of any other unexpected error from the formatting library.
-    console.error("Date formatting error:", e);
-    return String(value);
-  }
-};
-
-
 export function ChartDisplay({
   batteryId,
   data,
@@ -68,14 +46,11 @@ export function ChartDisplay({
   chartInfo,
   isLoading,
   onBrushChange,
+  getFormattedDate,
 }: ChartDisplayProps) {
 
-  const sortedData = useMemo(() => {
-    return [...data].sort((a, b) => a.timestamp - b.timestamp);
-  }, [data]);
-
   const filteredData = useMemo(() => {
-    if (dateRange === 'all') return sortedData;
+    if (dateRange === 'all') return data;
     const now = Date.now();
     let startTime: number;
 
@@ -90,10 +65,10 @@ export function ChartDisplay({
         startTime = subMonths(now, 1).getTime();
         break;
       default:
-        return sortedData;
+        return data;
     }
-    return sortedData.filter(d => d.timestamp >= startTime);
-  }, [sortedData, dateRange]);
+    return data.filter(d => d.timestamp >= startTime);
+  }, [data, dateRange]);
   
   const activeMetrics = useMemo(() => Object.keys(selectedMetrics).filter(k => selectedMetrics[k as keyof SelectedMetrics]), [selectedMetrics]);
   
@@ -175,7 +150,7 @@ export function ChartDisplay({
                     dataKey="timestamp"
                     tickFormatter={(value) => {
                       const format = (dateRange === '1h' || dateRange === '1d') ? 'HH:mm' : 'MMM d';
-                      return getFormattedTick(value, format);
+                      return getFormattedDate(value, format);
                     }}
                     scale="time"
                     type="number"
@@ -186,9 +161,8 @@ export function ChartDisplay({
                     cursor={false}
                     content={<ChartTooltipContent 
                         indicator="line" 
-                        labelFormatter={(label, payload) => {
-                           const timestamp = payload?.[0]?.payload?.timestamp;
-                           return getFormattedTick(timestamp, "MMM d, yyyy, h:mm:ss a");
+                        labelFormatter={(value) => {
+                           return getFormattedDate(value, "MMM d, yyyy, h:mm:ss a");
                         }}
                     />}
                 />
@@ -209,7 +183,7 @@ export function ChartDisplay({
                   dataKey="timestamp"
                   height={30}
                   stroke="hsl(var(--primary))"
-                  tickFormatter={(value) => getFormattedTick(value, 'MMM d')}
+                  tickFormatter={(value) => getFormattedDate(value, 'MMM d')}
                   onChange={handleBrushChange}
                   startIndex={undefined}
                   endIndex={undefined}
