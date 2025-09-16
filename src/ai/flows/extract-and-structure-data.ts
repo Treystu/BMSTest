@@ -21,7 +21,7 @@ export type ExtractAndStructureDataInput = z.infer<typeof ExtractAndStructureDat
 
 const ExtractAndStructureDataOutputSchema = z.object({
   batteryId: z.string().describe('A unique identifier for the battery, extracted from the image. This could be a serial number or model number.'),
-  extractedData: z.string().describe('The extracted and structured data from the image.'),
+  extractedData: z.string().describe('The extracted and structured data from the image as a raw JSON string.'),
 });
 export type ExtractAndStructureDataOutput = z.infer<typeof ExtractAndStructureDataOutputSchema>;
 
@@ -35,15 +35,15 @@ const prompt = ai.definePrompt({
   output: {schema: ExtractAndStructureDataOutputSchema},
   prompt: `You are an expert data extraction specialist.
 
-You will use OCR to extract data from the image provided, interpret the data, and structure it in a JSON format.
+You will use OCR to extract data from the image provided, interpret the data, and structure it.
 
 First, identify a unique identifier for the battery from the image. This could be a serial number, a model number, or any other distinct text string that can be used to uniquely identify this specific battery. Assign this to the 'batteryId' field.
 
-Then, extract data such as SOC, Voltage, Current, Capacity, Temperatures, and other metrics from the image.
+Then, extract all metrics from the image (e.g., SOC, Voltage, Current, Capacity, Temperatures) and structure them into a valid JSON object.
 
 Image: {{media url=photoDataUri}}
 
-Return the extracted battery ID and the structured data in JSON format. Do not include any explanation or preamble.
+Your response for 'extractedData' MUST be a raw, minified JSON string. Do not include any explanations, preambles, or markdown code fences like \`\`\`json. The string must be parsable by JSON.parse().
 `,
 });
 
