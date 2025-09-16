@@ -4,7 +4,7 @@
 import { useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
+import type { DataPoint, ChartInfo, SelectedMetrics, ProcessedDataPoint } from '@/lib/types';
 import { subDays, subWeeks, subMonths } from 'date-fns';
 import { BatteryTrendChart } from './BatteryTrendChart';
 
@@ -23,8 +23,7 @@ type ChartDisplayProps = {
   onBrushChange: (range: BrushRange | null) => void;
 };
 
-// More than 2 hours is considered a significant gap
-const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; 
+const AGGREGATION_WINDOW = 15 * 60 * 1000; // 15 minutes in milliseconds
 
 export function ChartDisplay({
   batteryId,
@@ -41,8 +40,8 @@ export function ChartDisplay({
   const { processedData, brushFriendlyData } = useMemo(() => {
     if (!data || data.length === 0) return { processedData: [], brushFriendlyData: [] };
     
-    const now = new Date();
     // 1. Filter data based on the selected date range
+    const now = new Date();
     const timeFilteredData = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
         switch (dateRange) {
@@ -59,31 +58,82 @@ export function ChartDisplay({
 
     // 2. Sort the data chronologically. This is a critical step.
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
+    const brushData = [...sortedData]; // Keep a clean version for the brush
     
-    // 3. Create a clean dataset for the brush component (no nulls).
-    const brushData = [...sortedData];
-
-    // 4. Insert nulls for time gaps to create visual breaks in the line chart.
-    const dataWithGaps: DataPoint[] = [];
+    // 3. Aggregate data into 15-minute windows
+    const aggregatedData: ProcessedDataPoint[] = [];
     if (sortedData.length > 0) {
-        dataWithGaps.push(sortedData[0]);
-        for (let i = 1; i < sortedData.length; i++) {
-            const prevPoint = sortedData[i - 1];
-            const currentPoint = sortedData[i];
-            
-            if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-                // Insert a point with null values to create a gap in the line
-                const gapPoint: DataPoint = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
-                activeMetrics.forEach(metric => {
-                    gapPoint[metric] = null;
-                });
-                dataWithGaps.push(gapPoint);
+        let currentWindowStart = Math.floor(sortedData[0].timestamp / AGGREGATION_WINDOW) * AGGREGATION_WINDOW;
+        let pointsInWindow: DataPoint[] = [];
+
+        for (const point of sortedData) {
+            if (point.timestamp < currentWindowStart + AGGREGATION_WINDOW) {
+                pointsInWindow.push(point);
+            } else {
+                // Process the completed window
+                if (pointsInWindow.length > 0) {
+                    if (pointsInWindow.length === 1) {
+                        // Single point, add as-is
+                        aggregatedData.push({ ...pointsInWindow[0], type: 'single' });
+                    } else {
+                        // Aggregate multiple points
+                        const aggregate: ProcessedDataPoint = {
+                            timestamp: pointsInWindow.reduce((acc, p) => acc + p.timestamp, 0) / pointsInWindow.length,
+                            type: 'aggregate',
+                            stats: {},
+                        };
+                        activeMetrics.forEach(metric => {
+                            const values = pointsInWindow.map(p => p[metric]).filter(v => v !== null && v !== undefined && !isNaN(v));
+                            if (values.length > 0) {
+                                const sum = values.reduce((acc, v) => acc + v, 0);
+                                aggregate.stats[metric] = {
+                                    min: Math.min(...values),
+                                    max: Math.max(...values),
+                                    avg: sum / values.length,
+                                    count: values.length
+                                };
+                                // Use average for line plotting
+                                aggregate[metric] = aggregate.stats[metric].avg;
+                            }
+                        });
+                        aggregatedData.push(aggregate);
+                    }
+                }
+                // Start a new window
+                currentWindowStart = Math.floor(point.timestamp / AGGREGATION_WINDOW) * AGGREGATION_WINDOW;
+                pointsInWindow = [point];
             }
-            dataWithGaps.push(currentPoint);
+        }
+        
+        // Process the last window
+        if (pointsInWindow.length > 0) {
+             if (pointsInWindow.length === 1) {
+                aggregatedData.push({ ...pointsInWindow[0], type: 'single' });
+            } else {
+                const aggregate: ProcessedDataPoint = {
+                    timestamp: pointsInWindow.reduce((acc, p) => acc + p.timestamp, 0) / pointsInWindow.length,
+                    type: 'aggregate',
+                    stats: {},
+                };
+                activeMetrics.forEach(metric => {
+                    const values = pointsInWindow.map(p => p[metric]).filter(v => v !== null && v !== undefined && !isNaN(v));
+                    if (values.length > 0) {
+                        const sum = values.reduce((acc, v) => acc + v, 0);
+                        aggregate.stats[metric] = {
+                            min: Math.min(...values),
+                            max: Math.max(...values),
+                            avg: sum / values.length,
+                            count: values.length
+                        };
+                        aggregate[metric] = aggregate.stats[metric].avg;
+                    }
+                });
+                aggregatedData.push(aggregate);
+            }
         }
     }
     
-    return { processedData: dataWithGaps, brushFriendlyData: brushData };
+    return { processedData: aggregatedData, brushFriendlyData: brushData };
   }, [data, dateRange, activeMetrics]);
   
   const handleBrushChangeCallback = useCallback((range: { startIndex?: number, endIndex?: number } | undefined) => {
@@ -154,7 +204,7 @@ export function ChartDisplay({
       <CardHeader>
         <CardTitle>{chartInfo?.title || `Trends for ${batteryId}`}</CardTitle>
         <CardDescription>
-          {chartInfo?.description || 'Time-based trend of extracted metrics.'}
+          {chartInfo?.description || 'Time-based trend of extracted metrics. Thicker lines indicate aggregated data.'}
         </CardDescription>
       </CardHeader>
       <CardContent>

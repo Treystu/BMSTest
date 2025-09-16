@@ -1,7 +1,22 @@
+
 export type DataPoint = {
   timestamp: number;
   [key: string]: any;
 };
+
+export type ProcessedDataPoint = {
+  timestamp: number;
+  type: 'single' | 'aggregate';
+  stats?: {
+    [metric: string]: {
+      min: number;
+      max: number;
+      avg: number;
+      count: number;
+    }
+  }
+  [key: string]: any;
+}
 
 export type ChartInfo = {
   title: string;

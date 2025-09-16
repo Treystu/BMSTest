@@ -2,19 +2,21 @@
 "use client";
 
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ResponsiveContainer
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ResponsiveContainer, Curve
 } from 'recharts';
 import { useMemo } from 'react';
-import type { DataPoint, SelectedMetrics } from '@/lib/types';
+import type { ProcessedDataPoint, SelectedMetrics } from '@/lib/types';
 import { formatInTimeZone } from 'date-fns-tz';
 
-const lineColors = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
-];
+const lineColors = {
+  soc: "hsl(var(--chart-1))",
+  voltage: "hsl(var(--chart-2))",
+  current: "hsl(var(--chart-3))",
+  capacity: "hsl(var(--chart-4))",
+  temperature: "hsl(var(--chart-5))",
+};
+
+const getLineColor = (metric: string) => lineColors[metric as keyof typeof lineColors] || "hsl(var(--foreground))";
 
 // Define which metrics belong to which axis
 const leftAxisMetricSet = new Set(['soc', 'capacity']);
@@ -34,22 +36,34 @@ const getFormattedTimestamp = (ts: number, rangeInMs: number) => {
 
 const CustomTooltipContent = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-        // Do not render tooltip for null gap points
-        if(payload[0].value === null) return null; 
-
-        const firstTimestamp = payload[0].payload.timestamp;
+        const dataPoint = payload[0].payload as ProcessedDataPoint;
 
         return (
-            <div className="p-2 bg-background border rounded-md shadow-lg text-sm">
-                <p className="font-bold">{formatInTimeZone(new Date(firstTimestamp), 'UTC', "MMM d, yyyy, h:mm:ss a")}</p>
-                {payload.map((p: any, index: number) => {
-                    const metric = p.dataKey;
-                    const value = p.value;
-                    if (value === null || value === undefined) return null;
+            <div className="p-3 bg-background border rounded-lg shadow-xl text-sm space-y-2">
+                <p className="font-bold">{formatInTimeZone(new Date(label), 'UTC', "MMM d, yyyy, h:mm:ss a")}</p>
+                {payload.map((p: any) => {
+                    const metric = p.dataKey as string;
+                    if (p.value === null || p.value === undefined) return null;
+                    
+                    if (dataPoint.type === 'aggregate' && dataPoint.stats[metric]) {
+                        const stats = dataPoint.stats[metric];
+                        return (
+                             <div key={metric} style={{ color: p.color }} className="p-2 rounded-md bg-muted/50">
+                                <p className="capitalize font-semibold">{metric}:</p>
+                                <ul className="list-disc list-inside text-muted-foreground">
+                                    <li>Avg: {stats.avg.toFixed(3)}</li>
+                                    <li>Min: {stats.min.toFixed(3)}</li>
+                                    <li>Max: {stats.max.toFixed(3)}</li>
+                                    <li>Count: {stats.count}</li>
+                                </ul>
+                            </div>
+                        )
+                    }
                     
                     return(
-                        <div key={metric} style={{ color: p.color || lineColors[index % lineColors.length] }}>
-                            <p className="capitalize">{metric}: {value?.toFixed(3)}</p>
+                        <div key={metric} style={{ color: p.color }} className="flex justify-between items-center">
+                            <p className="capitalize font-semibold">{metric}:</p> 
+                            <p className="font-mono ml-4">{p.value?.toFixed(3)}</p>
                         </div>
                     )
                 })}
@@ -59,21 +73,79 @@ const CustomTooltipContent = ({ active, payload, label }: any) => {
     return null;
 };
 
+// Custom line renderer to handle dynamic thickness
+const CustomLine = (props: any) => {
+    const { points, dataKey } = props;
+    
+    if (!points || points.length === 0) {
+        return null;
+    }
+    
+    const pathSegments = [];
+    let currentSegmentPoints = [];
+
+    for (let i = 0; i < points.length; i++) {
+        const point = points[i];
+        const isAggregated = point.payload.type === 'aggregate';
+        
+        // Start a new segment if the type changes or it's the first point
+        if (i === 0) {
+            currentSegmentPoints.push(point);
+            continue;
+        }
+
+        const prevPoint = points[i-1];
+        const wasAggregated = prevPoint.payload.type === 'aggregate';
+        const isGap = point.payload[dataKey] === null || prevPoint.payload[dataKey] === null;
+
+        if (isAggregated !== wasAggregated || isGap) {
+            if (currentSegmentPoints.length > 1) {
+                pathSegments.push(
+                    <Curve
+                        {...props}
+                        key={`seg-${pathSegments.length}`}
+                        points={currentSegmentPoints}
+                        strokeWidth={wasAggregated ? 4 : 2}
+                        className="recharts-line-curve"
+                    />
+                );
+            }
+             currentSegmentPoints = isGap ? [] : [prevPoint, point];
+        } else {
+            currentSegmentPoints.push(point);
+        }
+    }
+    
+    // Render the last segment
+    if (currentSegmentPoints.length > 1) {
+        const isLastSegmentAggregated = currentSegmentPoints[0].payload.type === 'aggregate';
+        pathSegments.push(
+            <Curve
+                {...props}
+                key={`seg-${pathSegments.length}`}
+                points={currentSegmentPoints}
+                strokeWidth={isLastSegmentAggregated ? 4 : 2}
+                className="recharts-line-curve"
+            />
+        );
+    }
+
+    return <g>{pathSegments}</g>;
+};
+
+
 type BatteryTrendChartProps = {
-    processedData: DataPoint[];
-    brushData: DataPoint[];
+    processedData: ProcessedDataPoint[];
+    brushData: ProcessedDataPoint[];
     selectedMetrics: SelectedMetrics;
     onBrushChange: (range: {startIndex?: number, endIndex?: number} | undefined) => void;
 }
 
 export function BatteryTrendChart({ processedData, brushData, selectedMetrics, onBrushChange }: BatteryTrendChartProps) {
   
-  // 1. Separate metrics for left and right Y-axes and assign them stable colors.
-  const { leftMetrics, rightMetrics, metricColorMap } = useMemo(() => {
+  const { leftMetrics, rightMetrics } = useMemo(() => {
     const left: string[] = [];
     const right: string[] = [];
-    const colors: { [key: string]: string } = {};
-    let colorIndex = 0;
     
     Object.keys(selectedMetrics).forEach(metric => {
         if (selectedMetrics[metric as keyof SelectedMetrics]) {
@@ -82,15 +154,12 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
             } else {
                 right.push(metric);
             }
-            colors[metric] = lineColors[colorIndex % lineColors.length];
-            colorIndex++;
         }
     });
 
-    return { leftMetrics: left, rightMetrics: right, metricColorMap: colors };
+    return { leftMetrics: left, rightMetrics: right };
   }, [selectedMetrics]);
 
-  // Calculate the visible time range to dynamically adjust the X-axis tick format.
   const visibleRange = useMemo(() => {
       if(processedData.length < 2) return 0;
       const first = processedData[0]?.timestamp;
@@ -110,44 +179,38 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
           tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
           interval="preserveStartEnd"
         />
-        {/* 2. Define two Y-axes with unique IDs */}
         <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--foreground))" domain={['dataMin - 1', 'dataMax + 1']} />
         <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--foreground))" domain={['dataMin - 2', 'dataMax + 2']}/>
         
         <Tooltip content={<CustomTooltipContent />} />
         <Legend />
         
-        {/* 3. Render lines for the left axis, ensuring connectNulls is false */}
         {leftMetrics.map((metric) => (
           <Line
             key={metric}
             yAxisId="left"
             type="monotone"
             dataKey={metric}
-            stroke={metricColorMap[metric]}
-            strokeWidth={2}
+            stroke={getLineColor(metric)}
             dot={false}
-            connectNulls={false}
             isAnimationActive={false}
+            content={<CustomLine />}
           />
         ))}
-
-        {/* 4. Render lines for the right axis, ensuring connectNulls is false */}
+        
         {rightMetrics.map((metric) => (
           <Line
             key={metric}
             yAxisId="right"
             type="monotone"
             dataKey={metric}
-            stroke={metricColorMap[metric]}
-            strokeWidth={2}
+            stroke={getLineColor(metric)}
             dot={false}
-            connectNulls={false}
             isAnimationActive={false}
+            content={<CustomLine />}
           />
         ))}
 
-        {/* 5. Use the clean 'brushData' for the Brush component */}
         <Brush
           dataKey="timestamp"
           height={30}
