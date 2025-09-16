@@ -108,8 +108,9 @@ export function ImageUploader({
                 const zipEntry = zip.files[relativePath];
                 if (!zipEntry.dir && isImageFile(zipEntry.name)) {
                     const blob = await zipEntry.async('blob');
-                    // Use the full path within the zip as the name to avoid collisions
-                    const file = new File([blob], zipEntry.name, { type: blob.type });
+                    // Ensure the file has a proper image MIME type
+                    const imageType = blob.type === 'application/octet-stream' ? 'image/png' : blob.type;
+                    const file = new File([blob], zipEntry.name, { type: imageType });
                     newRawFiles.push({ file, name: zipEntry.name });
                 }
             }
@@ -375,3 +376,5 @@ export function ImageUploader({
     </>
   );
 }
+
+    
