@@ -53,8 +53,10 @@ const mergeAndSortHistory = (histories: DataPoint[][]): DataPoint[] => {
 
     for (const history of histories) {
         for (const point of history) {
-            if (point && typeof point.timestamp === 'number') {
+            // Ensure point and timestamp are valid before processing
+            if (point && typeof point.timestamp === 'number' && !isNaN(point.timestamp)) {
                 const existing = dataMap.get(point.timestamp);
+                // Merge new point with existing point at the same timestamp
                 if (existing) {
                     dataMap.set(point.timestamp, { ...existing, ...point });
                 } else {
@@ -64,6 +66,7 @@ const mergeAndSortHistory = (histories: DataPoint[][]): DataPoint[] => {
         }
     }
     
+    // Sort the merged data points by timestamp
     return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 }
 
@@ -325,5 +328,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
