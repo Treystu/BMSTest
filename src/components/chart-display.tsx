@@ -42,6 +42,7 @@ export function ChartDisplay({
     if (!data || data.length === 0) return { processedData: [], brushFriendlyData: [] };
     
     const now = new Date();
+    // 1. Filter data based on the selected date range
     const timeFilteredData = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
         switch (dateRange) {
@@ -56,10 +57,14 @@ export function ChartDisplay({
       return { processedData: [], brushFriendlyData: [] };
     }
 
+    // 2. Sort the data chronologically. This is a critical step.
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    // 3. Create a clean dataset for the brush component (no nulls).
     const brushData = [...sortedData];
 
-    const dataWithGaps: (DataPoint | { timestamp: number; [key: string]: any; })[] = [];
+    // 4. Insert nulls for time gaps to create visual breaks in the line chart.
+    const dataWithGaps: DataPoint[] = [];
     if (sortedData.length > 0) {
         dataWithGaps.push(sortedData[0]);
         for (let i = 1; i < sortedData.length; i++) {
@@ -67,7 +72,8 @@ export function ChartDisplay({
             const currentPoint = sortedData[i];
             
             if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-                const gapPoint: { timestamp: number, [key: string]: null } = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
+                // Insert a point with null values to create a gap in the line
+                const gapPoint: DataPoint = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
                 activeMetrics.forEach(metric => {
                     gapPoint[metric] = null;
                 });
@@ -96,7 +102,7 @@ export function ChartDisplay({
       return;
     }
 
-    // Now, find the indices in the original, unfiltered `data` array
+    // Now, find the indices in the original, unfiltered `data` array to update the stats card
     const startIndexInOriginal = data.findIndex(d => d.timestamp >= startTimestamp);
     let endIndexInOriginal = -1;
     for (let i = data.length - 1; i >= 0; i--) {

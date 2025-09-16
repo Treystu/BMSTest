@@ -16,12 +16,15 @@ const lineColors = [
   "hsl(var(--chart-5))",
 ];
 
+// Define which metrics belong to which axis
 const leftAxisMetricSet = new Set(['soc', 'capacity']);
 
+// Dynamically format the timestamp on the X-axis based on the visible data range
 const getFormattedTimestamp = (ts: number, rangeInMs: number) => {
     if (isNaN(ts)) return "";
     try {
         const oneDay = 24 * 60 * 60 * 1000;
+        // If range is less than 2 days, show time. Otherwise, show date.
         const formatStr = rangeInMs <= oneDay * 2 ? 'HH:mm' : 'MMM d';
         return formatInTimeZone(new Date(ts), 'UTC', formatStr);
     } catch (e) {
@@ -31,7 +34,7 @@ const getFormattedTimestamp = (ts: number, rangeInMs: number) => {
 
 const CustomTooltipContent = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-        // Check if the hovered point is a gap
+        // Do not render tooltip for null gap points
         if(payload[0].value === null) return null; 
 
         const firstTimestamp = payload[0].payload.timestamp;
@@ -65,6 +68,7 @@ type BatteryTrendChartProps = {
 
 export function BatteryTrendChart({ processedData, brushData, selectedMetrics, onBrushChange }: BatteryTrendChartProps) {
   
+  // 1. Separate metrics for left and right Y-axes and assign them stable colors.
   const { leftMetrics, rightMetrics, metricColorMap } = useMemo(() => {
     const left: string[] = [];
     const right: string[] = [];
@@ -72,7 +76,7 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
     let colorIndex = 0;
     
     Object.keys(selectedMetrics).forEach(metric => {
-        if (selectedMetrics[metric]) {
+        if (selectedMetrics[metric as keyof SelectedMetrics]) {
             if (leftAxisMetricSet.has(metric.toLowerCase())) {
                 left.push(metric);
             } else {
@@ -86,6 +90,7 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
     return { leftMetrics: left, rightMetrics: right, metricColorMap: colors };
   }, [selectedMetrics]);
 
+  // Calculate the visible time range to dynamically adjust the X-axis tick format.
   const visibleRange = useMemo(() => {
       if(processedData.length < 2) return 0;
       const first = processedData[0]?.timestamp;
@@ -105,11 +110,14 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
           tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
           interval="preserveStartEnd"
         />
+        {/* 2. Define two Y-axes with unique IDs */}
         <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--foreground))" domain={['dataMin - 1', 'dataMax + 1']} />
         <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--foreground))" domain={['dataMin - 2', 'dataMax + 2']}/>
+        
         <Tooltip content={<CustomTooltipContent />} />
         <Legend />
         
+        {/* 3. Render lines for the left axis, ensuring connectNulls is false */}
         {leftMetrics.map((metric) => (
           <Line
             key={metric}
@@ -124,6 +132,7 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
           />
         ))}
 
+        {/* 4. Render lines for the right axis, ensuring connectNulls is false */}
         {rightMetrics.map((metric) => (
           <Line
             key={metric}
@@ -138,6 +147,7 @@ export function BatteryTrendChart({ processedData, brushData, selectedMetrics, o
           />
         ))}
 
+        {/* 5. Use the clean 'brushData' for the Brush component */}
         <Brush
           dataKey="timestamp"
           height={30}
