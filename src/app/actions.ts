@@ -15,19 +15,21 @@ function parseTimestampFromFilename(filename: string): number {
   const match = sanitized.match(/(\d{14})/);
   if (match) {
     const dt = match[1];
-    const year = parseInt(dt.substring(0, 4));
-    const month = parseInt(dt.substring(4, 6)) - 1; // JS months are 0-indexed
-    const day = parseInt(dt.substring(6, 8));
-    const hour = parseInt(dt.substring(8, 10));
-    const minute = parseInt(dt.substring(10, 12));
-    const second = parseInt(dt.substring(12, 14));
+    const year = dt.substring(0, 4);
+    const month = dt.substring(4, 6);
+    const day = dt.substring(6, 8);
+    const hour = dt.substring(8, 10);
+    const minute = dt.substring(10, 12);
+    const second = dt.substring(12, 14);
     
-    // Check for valid date components
-    if (year > 2000 && month >= 0 && month <= 11 && day > 0 && day <= 31) {
-        const date = new Date(year, month, day, hour, minute, second);
-        if (!isNaN(date.getTime())) {
-            return date.getTime();
-        }
+    // Construct a date string in ISO 8601 format without timezone info
+    // e.g., "2024-05-20T10:30:00". new Date() will parse this as local time.
+    const dateString = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+    
+    const date = new Date(dateString);
+
+    if (!isNaN(date.getTime())) {
+        return date.getTime();
     }
   }
 
