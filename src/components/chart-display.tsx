@@ -51,6 +51,8 @@ const getFormattedTick = (tick: any, format: string) => {
 };
 
 
+const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+
 export function ChartDisplay({
   batteryId,
   data,
@@ -100,6 +102,33 @@ export function ChartDisplay({
     });
     return config;
   }, [activeMetrics, filteredData]);
+  
+  const segmentedData = useMemo(() => {
+    if (filteredData.length === 0) return [];
+    
+    const segments: DataPoint[][] = [];
+    let currentSegment: DataPoint[] = [];
+
+    for (let i = 0; i < filteredData.length; i++) {
+        const point = filteredData[i];
+        if (i > 0) {
+            const prevPoint = filteredData[i-1];
+            if (point.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
+                if (currentSegment.length > 0) {
+                    segments.push(currentSegment);
+                }
+                currentSegment = [];
+            }
+        }
+        currentSegment.push(point);
+    }
+    if (currentSegment.length > 0) {
+        segments.push(currentSegment);
+    }
+
+    return segments;
+  }, [filteredData]);
+
 
   const handleBrushChange = useCallback((range: BrushRange | undefined) => {
     if (range?.startIndex === undefined || range?.endIndex === undefined) {
@@ -151,7 +180,7 @@ export function ChartDisplay({
         <ChartContainer config={chartConfig} className="h-[450px] w-full">
             <LineChart
                 accessibilityLayer
-                data={filteredData}
+                data={filteredData} // Use full data for context, Brush, etc.
                 margin={{
                   top: 5,
                   right: 10,
@@ -183,16 +212,18 @@ export function ChartDisplay({
                 />
                  <ChartLegend content={<ChartLegendContent />} />
                 {Object.keys(chartConfig).map((metric) => (
-                    <Line
-                        key={metric}
-                        type="monotone"
-                        dataKey={metric}
-                        stroke={chartConfig[metric].color}
-                        strokeWidth={2}
-                        dot={false}
-                        connectNulls // This will connect line segments across null values.
-                        animationDuration={300}
-                    />
+                    segmentedData.map((segment, index) => (
+                        <Line
+                            key={`${metric}-${index}`}
+                            type="monotone"
+                            data={segment}
+                            dataKey={metric}
+                            stroke={chartConfig[metric].color}
+                            strokeWidth={2}
+                            dot={false}
+                            animationDuration={300}
+                        />
+                    ))
                 ))}
                 <Brush 
                   dataKey="timestamp"
@@ -202,6 +233,7 @@ export function ChartDisplay({
                   onChange={handleBrushChange}
                   startIndex={undefined}
                   endIndex={undefined}
+                  data={filteredData}
                 />
             </LineChart>
         </ChartContainer>
