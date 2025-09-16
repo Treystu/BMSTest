@@ -3,11 +3,9 @@
 import { useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
+  ChartContainer
 } from '@/components/ui/chart';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Brush, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Brush, Legend, Tooltip } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
 import { subDays, subWeeks, subMonths } from 'date-fns';
