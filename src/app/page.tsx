@@ -24,10 +24,10 @@ const initialMetrics: SelectedMetrics = {
 const sanitizeMetricKey = (key: string): string => {
     const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/gi, '');
     
+    if (lowerKey.includes('stateofcharge') || lowerKey.includes('soc')) return 'soc';
     if (lowerKey === 'voltage') return 'voltage';
-    if (lowerKey.includes('soc') || lowerKey.includes('stateofcharge')) return 'soc';
     if (lowerKey === 'current') return 'current';
-    if (lowerKey.includes('capacity') || lowerKey.includes('cap')) return 'capacity';
+    if (lowerKey.includes('remainingcapacity') || lowerKey.includes('capacity') || lowerKey.includes('cap')) return 'capacity';
     if (lowerKey.includes('temp')) return 'temperature';
 
     return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
