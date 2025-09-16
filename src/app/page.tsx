@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
+const DUPLICATE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 const initialMetrics: SelectedMetrics = {
   soc: true,
@@ -43,6 +44,12 @@ export default function Home() {
   }, [batteryIds, activeBatteryId]);
 
   const handleUploadComplete = async (results: { success: boolean, data?: ExtractionResult, error?: string }[]) => {
+    console.log("handleUploadComplete received:", {
+        totalResults: results.length,
+        successful: results.filter(r => r.success).length,
+        failed: results.filter(r => !r.success).length,
+    });
+    
     const successfulExtractions = results.filter(r => r.success).map(r => r.data!);
     
     if (successfulExtractions.length === 0) {
@@ -87,8 +94,13 @@ export default function Home() {
             processObject(parsedData);
             entry.newPoints.push(dataPoint);
             entry.allInsights += `Data point at ${new Date(dataPoint.timestamp).toLocaleString()}: ${Object.entries(dataPoint).filter(([k]) => k !== 'timestamp').map(([k,v]) => `${k}: ${v}`).join(', ')}. `;
-        } catch (e) {
+        } catch (e: any) {
             console.error(`Failed to parse data for battery ${batteryId}`, e);
+            toast({
+                title: 'Data Parsing Error',
+                description: `Could not parse data for battery ${batteryId}. Error: ${e.message}`,
+                variant: 'destructive',
+            });
         }
     }
     
@@ -103,12 +115,29 @@ export default function Home() {
                 }
                 updatedData[key] = { history: [], chartInfo: null };
             }
-            const combinedHistory = [...updatedData[key].history, ...value.newPoints].sort((a, b) => a.timestamp - b.timestamp);
+
+            const existingHistory = updatedData[key].history;
+            const newPoints = value.newPoints;
+
+            const filteredNewPoints = newPoints.filter(newPoint => {
+                return !existingHistory.some(existingPoint => 
+                    Math.abs(existingPoint.timestamp - newPoint.timestamp) < DUPLICATE_THRESHOLD_MS
+                );
+            });
+            
+            if (filteredNewPoints.length < newPoints.length) {
+                console.log(`Filtered out ${newPoints.length - filteredNewPoints.length} duplicate data points for battery ${key}.`);
+            }
+
+            const combinedHistory = [...existingHistory, ...filteredNewPoints].sort((a, b) => a.timestamp - b.timestamp);
+
             updatedData[key] = {
                 ...updatedData[key],
                 history: combinedHistory
             };
         });
+        
+        console.log("Updated dataByBattery state:", updatedData);
 
         if (firstNewBatteryId && !activeBatteryId) {
             setActiveBatteryId(firstNewBatteryId);
@@ -119,21 +148,28 @@ export default function Home() {
         return updatedData;
     });
 
-    for (const [batteryId, { newPoints, allInsights }] of newDataByBattery.entries()) {
-        const currentHistory = dataByBattery[batteryId]?.history || [];
-        const combinedHistory = [...currentHistory, ...newPoints];
-        const metrics = Object.keys(combinedHistory.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp');
+    for (const [batteryId] of newDataByBattery.entries()) {
+        if (!dataByBattery[batteryId]) continue; // Should not happen with the logic above, but good practice
+
+        const fullHistory = dataByBattery[batteryId].history;
+        const insights = fullHistory.map(dp => `Data point at ${new Date(dp.timestamp).toLocaleString()}: ${Object.entries(dp).filter(([k]) => k !== 'timestamp').map(([k,v]) => `${k}: ${v}`).join(', ')}. `).join('');
+        const metrics = Object.keys(fullHistory.reduce((acc, curr) => ({...acc, ...curr}), {})).filter(k => k !== 'timestamp');
 
         if(metrics.length > 0) {
-          const result = await getChartInfo(metrics, "all time", allInsights);
+          const result = await getChartInfo(metrics, "all time", insights);
           if (result.success && result.data) {
-              setDataByBattery(prev => ({
-                  ...prev,
-                  [batteryId]: {
-                      ...prev[batteryId],
-                      chartInfo: result.data
+              setDataByBattery(prev => {
+                  if (!prev[batteryId] || JSON.stringify(prev[batteryId].chartInfo) === JSON.stringify(result.data)) {
+                      return prev;
                   }
-              }));
+                  return {
+                      ...prev,
+                      [batteryId]: {
+                          ...prev[batteryId],
+                          chartInfo: result.data
+                      }
+                  }
+              });
           }
         }
     }

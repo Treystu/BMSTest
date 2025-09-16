@@ -29,10 +29,10 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      if (imageFiles.length + files.length > 10) {
+      if (imageFiles.length + files.length > 20) { // Increased limit
         toast({
           title: 'Too many files',
-          description: 'You can upload a maximum of 10 files at a time.',
+          description: 'You can upload a maximum of 20 files at a time.',
           variant: 'destructive',
         });
         return;
@@ -44,7 +44,7 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
         reader.onloadend = () => {
           newFiles.push({ preview: reader.result as string, name: file.name });
           if (newFiles.length === files.length) {
-            setImageFiles(prev => [...prev, ...newFiles].slice(0, 10));
+            setImageFiles(prev => [...prev, ...newFiles].slice(0, 20));
           }
         };
         reader.readAsDataURL(file);
@@ -83,6 +83,9 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
       return;
     }
 
+    console.log(`[ImageUploader] Submitting ${imageFiles.length} images for processing.`);
+    imageFiles.forEach(f => console.log(`  - ${f.name}`));
+
     setIsLoading(true);
     startTransition(async () => {
       const results = await Promise.all(imageFiles.map(file => processImage(file.preview, file.name)));
@@ -101,9 +104,10 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
       if (failedExtractions.length > 0) {
         toast({
           title: 'Some Extractions Failed',
-          description: `${failedExtractions.length} images could not be processed. Details: ${failedExtractions.map(f => f.error).join(', ')}`,
+          description: `${failedExtractions.length} images could not be processed. Check console for details.`,
           variant: 'destructive',
         });
+        console.error("Failed extractions:", failedExtractions);
       }
       
       handleClearAll();
@@ -115,7 +119,7 @@ export function ImageUploader({ onUploadComplete, setIsLoading, isLoading }: Ima
     <Card>
       <CardHeader>
         <CardTitle>1. Upload Images</CardTitle>
-        <CardDescription>Upload up to 10 images. The app will automatically identify the battery and sort the data.</CardDescription>
+        <CardDescription>Upload up to 20 images. The app will automatically identify the battery and sort the data.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="relative w-full border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50 overflow-hidden p-2 min-h-[150px]">

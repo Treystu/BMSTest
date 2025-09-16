@@ -37,11 +37,12 @@ function parseTimestampFromFilename(filename: string): number {
 
 
 export async function processImage(photoDataUri: string, filename: string) {
+  console.log(`[Server Action] processImage started for: ${filename}`);
   try {
     const extractionResult = await extractAndStructureData({ photoDataUri });
     const timestamp = parseTimestampFromFilename(filename);
     
-    return {
+    const result = {
       success: true,
       data: {
         batteryId: extractionResult.batteryId,
@@ -49,8 +50,12 @@ export async function processImage(photoDataUri: string, filename: string) {
         timestamp: timestamp
       }
     };
+
+    console.log(`[Server Action] processImage success for: ${filename}`, { batteryId: result.data.batteryId, timestamp: new Date(result.data.timestamp).toISOString() });
+    return result;
+
   } catch (error) {
-    console.error('Error processing image:', error);
+    console.error(`[Server Action] Error processing image ${filename}:`, error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "An unknown error occurred during data extraction."
