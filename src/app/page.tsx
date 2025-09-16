@@ -45,7 +45,7 @@ export default function Home() {
 
   const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
   const [lastUpdatedBattery, setLastUpdatedBattery] = useState<string | null>(null);
-
+  
   const updateChartInfo = useCallback(async (batteryId: string, history: DataPoint[]) => {
       if (history.length === 0) return;
       console.log(`[updateChartInfo] Generating chart info for battery: ${batteryId}`);
@@ -59,9 +59,7 @@ export default function Home() {
               if (result.success && result.data) {
                   console.log(`[updateChartInfo] Successfully got chart info for ${batteryId}`);
                   setDataByBattery(prev => {
-                      if (!prev[batteryId] || (prev[batteryId].chartInfo && prev[batteryId].chartInfo.title)) {
-                          return prev;
-                      }
+                      if (!prev[batteryId]) return prev;
                       return {
                           ...prev,
                           [batteryId]: {
@@ -171,7 +169,9 @@ export default function Home() {
                 history: combined,
                 chartInfo: newChartInfo || existingChartInfo || null
             }
-            setLastUpdatedBattery(batteryId);
+            if (!newChartInfo && combined.length > 0) {
+              updateChartInfo(batteryId, combined);
+            }
         }
         return mergedData;
     });
@@ -179,7 +179,7 @@ export default function Home() {
     if (!activeBatteryId && Object.keys(newData).length > 0) {
         setActiveBatteryId(Object.keys(newData)[0]);
     }
-  }, [activeBatteryId]);
+  }, [activeBatteryId, updateChartInfo]);
   
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
