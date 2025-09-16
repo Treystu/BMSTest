@@ -26,11 +26,9 @@ type ChartDisplayProps = {
   onBrushChange: (range: BrushRange | null) => void;
 };
 
-type AggregatedDataPoint = {
+type ProcessedDataPoint = {
     timestamp: number;
-    count: number;
-    isGap?: boolean;
-    [key: string]: any; // for avg, min, max values
+    [key: string]: any; 
 };
 
 const lineColors = [
@@ -54,50 +52,9 @@ const getFormattedTick = (tick: any, format: string) => {
 };
 
 const TIME_GAP_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
-const AGGREGATION_WINDOW = 15 * 60 * 1000; // 15 minutes
 
-const CustomLine = (props: any) => {
-    const { points, strokeWidth } = props;
-    const segments: any[] = [];
-    let currentSegment: any[] = [];
-
-    points.forEach((p: any, index: number) => {
-        currentSegment.push(p);
-        if (index < points.length - 1) {
-            const nextPoint = points[index + 1];
-            if (nextPoint.payload.isGap) {
-                segments.push(currentSegment);
-                currentSegment = [];
-            }
-        }
-    });
-    segments.push(currentSegment);
-
-    return (
-        <g>
-            {segments.map((segment, index) => {
-                if(segment.length === 0) return null;
-                
-                return segment.map((p: any, i: number) => {
-                    if (i === 0) return null;
-                    const prev = segment[i - 1];
-                    const isAggregated = p.payload.count > 1 || prev.payload.count > 1;
-                    const finalStrokeWidth = isAggregated ? parseFloat(strokeWidth) * 2.5 : strokeWidth;
-                    
-                    return (
-                        <line 
-                            key={`${p.x}-${p.y}`}
-                            x1={prev.x} y1={prev.y}
-                            x2={p.x} y2={p.y}
-                            stroke={p.stroke}
-                            strokeWidth={finalStrokeWidth}
-                        />
-                    );
-                })
-            })}
-        </g>
-    );
-};
+// Metrics that are typically percentages (0-100)
+const leftAxisMetrics = new Set(['soc', 'capacity']);
 
 
 export function ChartDisplay({
@@ -112,6 +69,19 @@ export function ChartDisplay({
 
   const activeMetrics = useMemo(() => Object.keys(selectedMetrics).filter(k => selectedMetrics[k as keyof SelectedMetrics]), [selectedMetrics]);
 
+  const { leftMetrics, rightMetrics } = useMemo(() => {
+    const left: string[] = [];
+    const right: string[] = [];
+    activeMetrics.forEach(metric => {
+        if (leftAxisMetrics.has(metric.toLowerCase())) {
+            left.push(metric);
+        } else {
+            right.push(metric);
+        }
+    });
+    return { leftMetrics: left, rightMetrics: right };
+  }, [activeMetrics]);
+
   const processedData = useMemo(() => {
     if (!data || data.length === 0) return [];
     
@@ -125,56 +95,24 @@ export function ChartDisplay({
         default: timeFilteredData = data;
     }
     
-    if (timeFilteredData.length === 0) return [];
+    if (timeFilteredData.length < 2) return timeFilteredData;
 
-    // 2. Aggregate data into 15-minute buckets
-    const aggregatedBuckets = new Map<number, DataPoint[]>();
-    for (const point of timeFilteredData) {
-        const bucketTimestamp = Math.floor(point.timestamp / AGGREGATION_WINDOW) * AGGREGATION_WINDOW;
-        if (!aggregatedBuckets.has(bucketTimestamp)) {
-            aggregatedBuckets.set(bucketTimestamp, []);
-        }
-        aggregatedBuckets.get(bucketTimestamp)!.push(point);
-    }
-    
-    // 3. Process buckets into final data points with stats
-    const finalData: AggregatedDataPoint[] = [];
-    for (const [timestamp, points] of aggregatedBuckets) {
-        const count = points.length;
-        const newPoint: AggregatedDataPoint = { timestamp, count };
+    // 2. Sort data just in case it's not
+    const sortedData = timeFilteredData.sort((a, b) => a.timestamp - b.timestamp);
 
-        if (count === 1) {
-            const point = points[0];
-            activeMetrics.forEach(metric => {
-                newPoint[metric] = point[metric];
-            });
-        } else {
-            activeMetrics.forEach(metric => {
-                const values = points.map(p => p[metric]).filter(v => v !== undefined && v !== null) as number[];
-                if (values.length > 0) {
-                    const sum = values.reduce((a, b) => a + b, 0);
-                    newPoint[`${metric}_avg`] = sum / values.length;
-                    newPoint[`${metric}_min`] = Math.min(...values);
-                    newPoint[`${metric}_max`] = Math.max(...values);
-                    // Use the average value as the main value for the line
-                    newPoint[metric] = newPoint[`${metric}_avg`];
-                }
-            });
-        }
-        finalData.push(newPoint);
-    }
-    finalData.sort((a,b) => a.timestamp - b.timestamp);
-    
-    // 4. Insert nulls for large time gaps
-    if (finalData.length < 2) return finalData;
-
-    const dataWithGaps: any[] = [finalData[0]];
-    for (let i = 1; i < finalData.length; i++) {
-        const prevPoint = finalData[i-1];
-        const currentPoint = finalData[i];
+    // 3. Insert nulls for large time gaps
+    const dataWithGaps: ProcessedDataPoint[] = [sortedData[0]];
+    for (let i = 1; i < sortedData.length; i++) {
+        const prevPoint = sortedData[i-1];
+        const currentPoint = sortedData[i];
         
         if (currentPoint.timestamp - prevPoint.timestamp > TIME_GAP_THRESHOLD) {
-            dataWithGaps.push({ timestamp: prevPoint.timestamp + TIME_GAP_THRESHOLD / 2, isGap: true });
+            // Create a gap point. Recharts will not connect lines over a null.
+            const gapPoint = { timestamp: prevPoint.timestamp + (TIME_GAP_THRESHOLD / 2) };
+            activeMetrics.forEach(metric => {
+                gapPoint[metric] = null;
+            });
+            dataWithGaps.push(gapPoint);
         }
         dataWithGaps.push(currentPoint);
     }
@@ -198,7 +136,9 @@ export function ChartDisplay({
       onBrushChange(null);
     } else {
       const allData = data;
-      const brushDataSubset = processedData.slice(range.startIndex, range.endIndex + 1).filter(d => d !== null && !d.isGap);
+      // We need to map brush range from processedData back to the original `data` array
+      const brushDataSubset = processedData.slice(range.startIndex, range.endIndex + 1).filter(d => d !== null && d[activeMetrics[0]] !== null);
+
       if(brushDataSubset.length > 0) {
         const firstTimestamp = brushDataSubset[0]!.timestamp;
         const lastTimestamp = brushDataSubset[brushDataSubset.length - 1]!.timestamp;
@@ -222,36 +162,25 @@ export function ChartDisplay({
         onBrushChange(null);
       }
     }
-  }, [onBrushChange, processedData, data]);
+  }, [onBrushChange, processedData, data, activeMetrics]);
 
   const CustomTooltipContent = (props: any) => {
     const { active, payload, label } = props;
     if (active && payload && payload.length) {
         const dataPoint = payload[0].payload;
-        if(dataPoint.isGap) return null;
+        if(dataPoint[payload[0].dataKey] === null) return null; // Don't show tooltip for gaps
         return (
             <div className="p-2 bg-background border rounded-md shadow-lg text-sm">
                 <p className="font-bold">{getFormattedTick(label, "MMM d, yyyy, h:mm:ss a")}</p>
-                {dataPoint.count > 1 && <p className="text-xs text-muted-foreground mb-2">({dataPoint.count} points in 15min)</p>}
                 {payload.map((p: any) => {
                     const metric = p.dataKey;
                     const color = p.color;
-                    if(dataPoint[metric] === undefined) return null;
+                    const value = p.value;
+                    if (value === null || value === undefined) return null;
                     
                     return(
                         <div key={metric} style={{ color }}>
-                            {dataPoint.count === 1 ? (
-                                <p>{chartConfig[metric]?.label}: {dataPoint[metric]?.toFixed(3)}</p>
-                            ) : (
-                                <>
-                                    <p className="font-semibold">{chartConfig[metric]?.label}</p>
-                                    <ul className="pl-3">
-                                        <li>Avg: {dataPoint[`${metric}_avg`]?.toFixed(3)}</li>
-                                        <li>Min: {dataPoint[`${metric}_min`]?.toFixed(3)}</li>
-                                        <li>Max: {dataPoint[`${metric}_max`]?.toFixed(3)}</li>
-                                    </ul>
-                                </>
-                            )}
+                            <p>{chartConfig[metric]?.label}: {value?.toFixed(3)}</p>
                         </div>
                     )
                 })}
@@ -296,7 +225,7 @@ export function ChartDisplay({
       <CardHeader>
         <CardTitle>{chartInfo?.title || `Trends for ${batteryId}`}</CardTitle>
         <CardDescription>
-          {chartInfo?.description || 'Time-based trend of extracted metrics. Thicker lines represent aggregated 15-minute intervals.'}
+          {chartInfo?.description || 'Time-based trend of extracted metrics.'}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -306,8 +235,8 @@ export function ChartDisplay({
                 data={processedData}
                 margin={{
                   top: 5,
-                  right: 10,
-                  left: 10,
+                  right: 20,
+                  left: 20,
                   bottom: 20,
                 }}
             >
@@ -315,8 +244,8 @@ export function ChartDisplay({
                 <XAxis
                     dataKey="timestamp"
                     tickFormatter={(value, index) => {
-                      if (processedData[index]?.isGap) return "";
-                      const visibleRange = processedData[processedData.length-1].timestamp - processedData[0].timestamp;
+                      if (processedData[index]?.[activeMetrics[0]] === null) return "";
+                      const visibleRange = processedData.length > 1 ? processedData[processedData.length-1].timestamp - processedData[0].timestamp : 0;
                       const oneDay = 24 * 60 * 60 * 1000;
                       const format = visibleRange <= oneDay * 2 ? 'HH:mm' : 'MMM d';
                       return getFormattedTick(value, format);
@@ -326,21 +255,36 @@ export function ChartDisplay({
                     domain={['dataMin', 'dataMax']}
                     interval="preserveStartEnd"
                 />
-                <YAxis />
+                <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--foreground))" domain={['dataMin - 1', 'dataMax + 1']} />
+                <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--foreground))" domain={['dataMin - 2', 'dataMax + 2']}/>
                 <Tooltip
                     content={<CustomTooltipContent />}
                 />
                 <Legend />
-                {Object.keys(chartConfig).map((metric) => (
+                {leftMetrics.map((metric) => (
                      <Line
                         key={metric}
+                        yAxisId="left"
+                        type="monotone"
                         dataKey={metric}
                         stroke={chartConfig[metric].color}
                         strokeWidth={2}
                         dot={false}
                         connectNulls={false}
-                        isAnimationActive={false} // Important for custom line
-                        content={<CustomLine />}
+                        isAnimationActive={false}
+                    />
+                ))}
+                {rightMetrics.map((metric) => (
+                     <Line
+                        key={metric}
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey={metric}
+                        stroke={chartConfig[metric].color}
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls={false}
+                        isAnimationActive={false}
                     />
                 ))}
                 <Brush 
@@ -351,7 +295,7 @@ export function ChartDisplay({
                   onChange={handleBrushChange}
                   startIndex={undefined}
                   endIndex={undefined}
-                  data={processedData.filter(d => !d.isGap)}
+                  data={processedData.filter(d => d[activeMetrics[0]] !== null)}
                 />
             </LineChart>
         </ChartContainer>
@@ -359,5 +303,3 @@ export function ChartDisplay({
     </Card>
   );
 }
-
-    
