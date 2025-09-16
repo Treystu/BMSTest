@@ -63,8 +63,34 @@ const extractAndStructureDataFlow = ai.defineFlow(
     inputSchema: ExtractAndStructureDataInputSchema,
     outputSchema: ExtractAndStructureDataOutputSchema,
   },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
+  async (input) => {
+    let attempts = 0;
+    const maxAttempts = 5;
+    const initialDelay = 1000; // 1 second
+
+    while (attempts < maxAttempts) {
+      try {
+        const { output } = await prompt(input);
+        return output!;
+      } catch (error: any) {
+        attempts++;
+        // Check for 503 Service Unavailable or similar overload errors
+        if (error.status === 503 || (error.message && error.message.includes('503'))) {
+          if (attempts >= maxAttempts) {
+            console.error(`[extractAndStructureDataFlow] Max retry attempts reached for input:`, input);
+            throw new Error(`The model is currently overloaded. Please try again later. (Max retries reached)`);
+          }
+          const delay = initialDelay * Math.pow(2, attempts - 1) + Math.random() * 1000;
+          console.log(`[extractAndStructureDataFlow] Model overloaded. Retrying in ${Math.round(delay / 1000)}s... (Attempt ${attempts})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          // For non-retryable errors, re-throw immediately
+          console.error(`[extractAndStructureDataFlow] Non-retryable error encountered:`, error);
+          throw error;
+        }
+      }
+    }
+    // This part should not be reachable if maxAttempts is > 0, but is here for type safety.
+    throw new Error('Flow failed after multiple retries.');
   }
 );
