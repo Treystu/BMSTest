@@ -224,7 +224,6 @@ export default function Home() {
     return Array.from(allMetrics);
   }, [dataHistory]);
 
-
   const brushData = useMemo(() => {
     if (!brushRange || brushRange.startIndex === undefined || brushRange.endIndex === undefined || !activeBatteryId) return null;
 
