@@ -63,5 +63,3 @@ export type ImageFile = {
   error?: string;
   verifiedMetrics?: { [key: string]: boolean };
 };
-
-    
