@@ -72,6 +72,7 @@ const mergeAndSortHistory = (histories: DataPoint[][]): DataPoint[] => {
 
 export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<BatteryDataMap>({});
+  const [processedFileNames, setProcessedFileNames] = useState<Set<string>>(new Set());
   const [activeBatteryId, setActiveBatteryId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState<SelectedMetrics>(initialMetrics);
@@ -90,7 +91,7 @@ export default function Home() {
 
   const handleNewDataPoint = useCallback((extractionData: ExtractionResult) => {
     console.log('[handleNewDataPoint] Processing new data point:', extractionData);
-    const { batteryId, extractedData, timestamp } = extractionData;
+    const { batteryId, extractedData, timestamp, fileName } = extractionData;
 
     try {
         const parsedData = JSON.parse(extractedData);
@@ -127,6 +128,10 @@ export default function Home() {
             };
         });
         
+        if (fileName) {
+            setProcessedFileNames(prev => new Set(prev).add(fileName));
+        }
+        
         if (!activeBatteryId) {
             setActiveBatteryId(batteryId);
         }
@@ -142,10 +147,15 @@ export default function Home() {
   }, [toast, activeBatteryId]);
 
   const handleMultipleDataPoints = useCallback((newData: BatteryDataMap) => {
+    const newFileNames = new Set<string>();
+
     setDataByBattery(prevData => {
         const mergedData = { ...prevData };
         for (const batteryId in newData) {
             const newHistory = newData[batteryId].history || [];
+            if (newData[batteryId].processedFileNames) {
+                newData[batteryId].processedFileNames.forEach(name => newFileNames.add(name));
+            }
             const existingHistory = mergedData[batteryId]?.history || [];
             const combined = mergeAndSortHistory([existingHistory, newHistory]);
             
@@ -156,11 +166,16 @@ export default function Home() {
                 ...mergedData[batteryId],
                 ...newData[batteryId],
                 history: combined,
-                chartInfo: newChartInfo || existingChartInfo || null
+                chartInfo: newChartInfo || existingChartInfo || null,
+                processedFileNames: Array.from(new Set([...(mergedData[batteryId]?.processedFileNames || []), ...(newData[batteryId].processedFileNames || [])]))
             }
         }
         return mergedData;
     });
+
+    if (newFileNames.size > 0) {
+        setProcessedFileNames(prev => new Set([...prev, ...newFileNames]));
+    }
 
     if (!activeBatteryId && Object.keys(newData).length > 0) {
         setActiveBatteryId(Object.keys(newData)[0]);
@@ -249,6 +264,7 @@ export default function Home() {
               setIsLoading={setIsLoading}
               isLoading={isLoading}
               dataByBattery={dataByBattery}
+              processedFileNames={processedFileNames}
             />
             <DataDisplay data={latestDataPoint} />
           </div>
@@ -328,3 +344,5 @@ export default function Home() {
     </div>
   );
 }
+
+    

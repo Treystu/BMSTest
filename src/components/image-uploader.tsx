@@ -1,8 +1,9 @@
+
 "use client";
 
-import { useState, useRef, useTransition, useCallback } from 'react';
+import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
 import Image from 'next/image';
-import { Upload, X, Loader2, Trash2, Download, UploadCloud, AlertCircle, CheckCircle, RefreshCw, Clock, Check, ShieldCheck } from 'lucide-react';
+import { Upload, X, Loader2, Trash2, Download, UploadCloud, AlertCircle, CheckCircle, RefreshCw, Clock, Check, ShieldCheck, Copy } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -21,6 +22,7 @@ type ImageUploaderProps = {
   setIsLoading: (isLoading: boolean) => void;
   isLoading: boolean;
   dataByBattery: BatteryDataMap;
+  processedFileNames: Set<string>;
 };
 
 const isImageFile = (fileName: string) => {
@@ -49,6 +51,11 @@ const StatusIcon = ({ status, error }: { status: ImageFile['status'], error?: st
             icon = <CheckCircle className="h-3 w-3" />;
             tooltipText = 'Success';
             className = 'bg-green-500';
+            break;
+        case 'duplicate':
+            icon = <Copy className="h-3 w-3" />;
+            tooltipText = 'Duplicate file name, already processed.';
+            className = 'bg-yellow-500';
             break;
         case 'error':
             icon = <AlertCircle className="h-3 w-3" />;
@@ -79,7 +86,8 @@ export function ImageUploader({
     onMultipleDataPoints,
     setIsLoading, 
     isLoading,
-    dataByBattery
+    dataByBattery,
+    processedFileNames
 }: ImageUploaderProps) {
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
   const [progress, setProgress] = useState(0);
@@ -134,11 +142,12 @@ export function ImageUploader({
                 if (dataUri.startsWith('data:application/octet-stream')) {
                   dataUri = dataUri.replace('data:application/octet-stream', 'data:image/png');
                 }
+                const status: ImageFile['status'] = processedFileNames.has(name) ? 'duplicate' : 'queued';
                 resolve({ 
                     id: `${name}-${new Date().getTime()}`,
                     preview: dataUri,
                     name: name,
-                    status: 'queued' 
+                    status: status
                 });
             };
             reader.readAsDataURL(file);
@@ -148,11 +157,12 @@ export function ImageUploader({
     const newImageFilePromises = newRawFiles.map(f => fileToImageFile(f.file, f.name));
     const newImageFiles = await Promise.all(newImageFilePromises);
     
-    const existingNames = imageFiles.map(f => f.name);
-    const duplicates = newImageFiles.filter(f => existingNames.includes(f.name));
+    const currentQueueNames = imageFiles.map(f => f.name);
+    const duplicatesInQueue = newImageFiles.filter(f => currentQueueNames.includes(f.name));
 
-    if (duplicates.length > 0) {
-        setDuplicateFiles({ newFiles: newImageFiles, existingNames });
+    if (duplicatesInQueue.length > 0) {
+        // This handles files that are duplicates within the current UI queue, not the global processed list.
+        setDuplicateFiles({ newFiles: newImageFiles, existingNames: currentQueueNames });
     } else {
         addFilesToQueue(newImageFiles);
     }
@@ -187,7 +197,13 @@ export function ImageUploader({
   }
 
   const handleResubmitFailed = () => {
-    setImageFiles(prev => prev.map(f => f.status === 'error' ? { ...f, status: 'queued', error: undefined } : f));
+    setImageFiles(prev => prev.map(f => {
+        if (f.status === 'error') {
+            const newStatus: ImageFile['status'] = processedFileNames.has(f.name) ? 'duplicate' : 'queued';
+            return { ...f, status: newStatus, error: undefined };
+        }
+        return f;
+    }));
     toast({ title: "Re-submitted", description: "Failed uploads have been re-queued for processing." });
   };
 
@@ -197,8 +213,17 @@ export function ImageUploader({
       toast({ title: "No Data to Download", description: "Upload and process some images first.", variant: "destructive" });
       return;
     }
+    
+    // Create a deep copy to avoid modifying the original state
+    const dataToExport = JSON.parse(JSON.stringify(dataByBattery));
 
-    const dataStr = JSON.stringify(dataByBattery, null, 2);
+    // Attach the master list of processed filenames to each battery object for future imports
+    const allFileNames = Array.from(processedFileNames);
+    Object.keys(dataToExport).forEach(batteryId => {
+        dataToExport[batteryId].processedFileNames = allFileNames;
+    });
+
+    const dataStr = JSON.stringify(dataToExport, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -299,7 +324,7 @@ export function ImageUploader({
   };
 
   const hasFailedUploads = imageFiles.some(f => f.status === 'error');
-  const hasProcessedFiles = imageFiles.some(f => f.status === 'success' || f.status === 'error');
+  const hasProcessedFiles = imageFiles.some(f => f.status !== 'queued');
 
   return (
     <>
@@ -404,6 +429,8 @@ export function ImageUploader({
                               </div>
                             ))}
                           </div>
+                        ) : file.status === 'duplicate' ? (
+                            <p className="text-yellow-600 mt-1">Skipped: Duplicate file.</p>
                         ) : (
                           <p className="text-red-600 mt-1">Failed: {file.error}</p>
                         )}
@@ -436,3 +463,5 @@ export function ImageUploader({
     </>
   );
 }
+
+    

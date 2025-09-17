@@ -1,3 +1,4 @@
+
 'use server';
 
 import { extractAndStructureData } from '@/ai/flows/extract-and-structure-data';
@@ -48,7 +49,8 @@ export async function processImage(photoDataUri: string, filename: string) {
       data: {
         batteryId: extractionResult.batteryId,
         extractedData: extractionResult.extractedData,
-        timestamp: timestamp
+        timestamp: timestamp,
+        fileName: filename
       }
     };
 
@@ -63,4 +65,6 @@ export async function processImage(photoDataUri: string, filename: string) {
     };
   }
 }
+    
+
     

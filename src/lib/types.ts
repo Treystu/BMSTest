@@ -31,6 +31,7 @@ export type ExtractionResult = {
   batteryId: string;
   extractedData: string;
   timestamp: number;
+  fileName: string;
 };
 
 export type HourlyAnalysis = {
@@ -47,11 +48,12 @@ export type BatteryAnalysis = {
 export type BatteryData = {
   history: DataPoint[];
   chartInfo: ChartInfo | null;
+  processedFileNames?: string[];
 }
 
 export type BatteryDataMap = Record<string, BatteryData>;
 
-export type ImageFileStatus = 'queued' | 'processing' | 'success' | 'error';
+export type ImageFileStatus = 'queued' | 'processing' | 'success' | 'error' | 'duplicate';
 
 export type ImageFile = {
   id: string;
@@ -61,3 +63,5 @@ export type ImageFile = {
   error?: string;
   verifiedMetrics?: { [key: string]: boolean };
 };
+
+    
