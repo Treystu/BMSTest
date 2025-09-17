@@ -51,18 +51,20 @@ const getFormattedDate = (timestamp: number | Date | string, formatStr: string):
 export function mergeAndSortHistory<T extends { timestamp: number }>(existing: T[] = [], incoming: T[] = []): T[] {
     const dataMap = new Map<number, T>();
 
+    // Add existing points to the map
     for (const point of existing) {
         if (point && typeof point.timestamp === 'number' && !isNaN(point.timestamp)) {
             dataMap.set(point.timestamp, point);
         }
     }
+    // Add incoming points, overwriting existing ones with the same timestamp
     for (const point of incoming) {
         if (point && typeof point.timestamp === 'number' && !isNaN(point.timestamp)) {
-            // New points will overwrite existing ones with the same timestamp
             dataMap.set(point.timestamp, point);
         }
     }
     
+    // Convert map values to an array and sort by timestamp
     return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 }
 
@@ -155,18 +157,22 @@ export default function Home() {
             const newHistory = newData[batteryId].history || [];
             const newRawExtractions = newData[batteryId].rawExtractions || [];
 
+            // Add new filenames from the imported data to a temporary set
             if (newData[batteryId].processedFileNames) {
                 newData[batteryId].processedFileNames?.forEach(name => newFileNames.add(name));
             }
+            
             const existingHistory = mergedData[batteryId]?.history || [];
             const existingRawExtractions = mergedData[batteryId]?.rawExtractions || [];
             
+            // Use the robust merge and sort function for both history and raw data
             const combinedHistory = mergeAndSortHistory(existingHistory, newHistory);
             const combinedRaw = mergeAndSortHistory(existingRawExtractions, newRawExtractions);
             
             const existingChartInfo = mergedData[batteryId]?.chartInfo;
             const newChartInfo = newData[batteryId].chartInfo;
             
+            // Combine filenames from both existing and new data
             const allFileNames = Array.from(new Set([...(mergedData[batteryId]?.processedFileNames || []), ...(newData[batteryId].processedFileNames || [])]));
 
             mergedData[batteryId] = {
@@ -196,6 +202,7 @@ export default function Home() {
 
   const latestDataPoint = useMemo(() => {
     if (dataHistory.length > 0) {
+      // Since dataHistory is guaranteed to be sorted, the last item is the latest
       return dataHistory[dataHistory.length - 1];
     }
     return null;
@@ -212,6 +219,7 @@ export default function Home() {
         });
       });
     }
+    // Ensure core metrics are always available for selection
     Object.keys(initialMetrics).forEach(m => allMetrics.add(m));
     return Array.from(allMetrics);
   }, [dataHistory]);
@@ -312,7 +320,7 @@ export default function Home() {
                             <CardDescription>
                                 Average values from {brushData.startDate} to {brushData.endDate}.
                             </CardDescription>
-                        </CardHeader>
+                        </Header>
                         <CardContent>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                 {Object.entries(brushData.stats).map(([metric, data]) => (

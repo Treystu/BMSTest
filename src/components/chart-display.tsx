@@ -28,10 +28,6 @@ type ChartDisplayProps = {
 };
 
 type ZoomState = {
-  x1: number | string | null;
-  y1: number | string | null;
-  x2: number | string | null;
-  y2: number | string | null;
   refAreaLeft: string | number;
   refAreaRight: string | number;
 };
@@ -113,7 +109,7 @@ export function ChartDisplay({
   onBrushChange
 }: ChartDisplayProps) {
 
-  const [zoomState, setZoomState] = useState<ZoomState>({ x1: null, y1: null, x2: null, y2: null, refAreaLeft: '', refAreaRight: '' });
+  const [zoomState, setZoomState] = useState<ZoomState>({ refAreaLeft: '', refAreaRight: '' });
   const [zoomDomain, setZoomDomain] = useState<ZoomDomain | null>(null);
 
   const { leftMetrics, rightMetrics, allMetrics } = useMemo(() => {
@@ -139,7 +135,7 @@ export function ChartDisplay({
     if (!data || data.length === 0) return { processedData: [], timeFilteredData: [], visibleRange: 0 };
     
     const now = Date.now();
-    // Data is assumed to be sorted, so we just filter.
+    // Data is guaranteed to be sorted by page.tsx, so we just filter.
     const filtered = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
         switch (dateRange) {
@@ -178,12 +174,12 @@ export function ChartDisplay({
   
   const handleMouseDown = (e: any) => {
     if (!e || !e.activeLabel) return;
-    setZoomState({ ...zoomState, refAreaLeft: e.activeLabel, refAreaRight: e.activeLabel, x1: e.activeCoordinate.x, y1: e.activeCoordinate.y });
+    setZoomState({ ...zoomState, refAreaLeft: e.activeLabel });
   };
 
   const handleMouseMove = (e: any) => {
     if (zoomState.refAreaLeft && e && e.activeLabel) {
-      setZoomState({ ...zoomState, refAreaRight: e.activeLabel, x2: e.activeCoordinate.x, y2: e.activeCoordinate.y });
+      setZoomState({ ...zoomState, refAreaRight: e.activeLabel });
     }
   };
 
@@ -191,52 +187,19 @@ export function ChartDisplay({
     const { refAreaLeft, refAreaRight } = zoomState;
     if (refAreaLeft && refAreaRight && refAreaLeft !== refAreaRight) {
         
-      const leftNum = typeof refAreaLeft === 'string' ? parseFloat(refAreaLeft) : refAreaLeft;
-      const rightNum = typeof refAreaRight === 'string' ? parseFloat(refAreaRight) : refAreaRight;
-      
-      const newDomainX: [number, number] = [Math.min(leftNum, rightNum), Math.max(leftNum, rightNum)];
+      const newDomainX: [number, number] = [
+          Math.min(Number(refAreaLeft), Number(refAreaRight)), 
+          Math.max(Number(refAreaLeft), Number(refAreaRight))
+      ];
 
-      const leftYAxis = e.yAxisMap?.left;
-      const rightYAxis = e.yAxisMap?.right;
-      
-      if (!leftYAxis && !rightYAxis) {
-          resetZoom();
-          return;
-      }
-      
-      const { y1, y2 } = zoomState;
-      if (y1 === null || y2 === null) {
-        resetZoom();
-        return;
-      }
-      const yMinPixel = (leftYAxis || rightYAxis).y;
-      const yMaxPixel = yMinPixel + (leftYAxis || rightYAxis).height;
-
-      const y1Norm = (y1 - yMinPixel) / (yMaxPixel - yMinPixel);
-      const y2Norm = (y2 - yMinPixel) / (yMaxPixel - yMinPixel);
-
-      let newDomainYLeft: [number, number] = ['auto', 'auto'] as any;
-      let newDomainYRight: [number, number] = ['auto', 'auto'] as any;
-      
-      if (leftYAxis) {
-        const [yLeftMinDom, yLeftMaxDom] = leftYAxis.domain;
-        const yLeftRange = yLeftMaxDom - yLeftMinDom;
-        const yLeft1 = yLeftMaxDom - y1Norm * yLeftRange;
-        const yLeft2 = yLeftMaxDom - y2Norm * yLeftRange;
-        newDomainYLeft = [Math.min(yLeft1, yLeft2), Math.max(yLeft1, yLeft2)];
-      }
-
-      if (rightYAxis) {
-        const [yRightMinDom, yRightMaxDom] = rightYAxis.domain;
-        const yRightRange = yRightMaxDom - yRightMinDom;
-        const yRight1 = yRightMaxDom - y1Norm * yRightRange;
-        const yRight2 = yRightMaxDom - y2Norm * yRightRange;
-        newDomainYRight = [Math.min(yRight1, yRight2), Math.max(yRight1, yRight2)];
-      }
-      
-      setZoomDomain({ x: newDomainX, yLeft: newDomainYLeft, yRight: newDomainYRight });
+      // A simple zoom on X-axis only for now to ensure stability
+      setZoomDomain({ 
+          x: newDomainX, 
+          yLeft: ['auto', 'auto'],
+          yRight: ['auto', 'auto']
+      });
     }
-    setZoomState({ x1: null, y1: null, x2: null, y2: null, refAreaLeft: '', refAreaRight: '' });
+    setZoomState({ refAreaLeft: '', refAreaRight: '' });
   };
   
   const resetZoom = () => {
@@ -376,6 +339,8 @@ export function ChartDisplay({
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
               onChange={handleBrushChangeCallback}
               data={timeFilteredData}
+              startIndex={Math.max(timeFilteredData.length - 100, 0)}
+              endIndex={timeFilteredData.length - 1}
             >
                 <LineChart>
                   {allMetrics.map((metric) => (
@@ -399,3 +364,5 @@ export function ChartDisplay({
     </Card>
   );
 }
+
+    
