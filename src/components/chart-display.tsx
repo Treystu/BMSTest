@@ -9,7 +9,7 @@ import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
 import { subDays, subWeeks, subMonths } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea, Brush
 } from 'recharts';
 
 export type BrushRange = {
@@ -114,8 +114,8 @@ export function ChartDisplay({
   const [zoomState, setZoomState] = useState<ZoomState>({ x1: null, y1: null, x2: null, y2: null, refAreaLeft: '', refAreaRight: '' });
   const [zoomDomain, setZoomDomain] = useState<ZoomDomain | null>(null);
 
-  const { processedData, visibleRange } = useMemo(() => {
-    if (!data || data.length === 0) return { processedData: [], visibleRange: 0 };
+  const { processedData, visibleRange, brushData } = useMemo(() => {
+    if (!data || data.length === 0) return { processedData: [], visibleRange: 0, brushData: [] };
     
     const now = new Date();
     const timeFilteredData = data.filter(d => {
@@ -128,10 +128,13 @@ export function ChartDisplay({
         }
     });
 
-    if (timeFilteredData.length === 0) return { processedData: [], visibleRange: 0 };
+    if (timeFilteredData.length === 0) return { processedData: [], visibleRange: 0, brushData: [] };
     
     // CRITICAL: Sort data chronologically before any other processing.
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
+
+    // Create a separate, sorted dataset for the brush that does NOT have gaps
+    const cleanBrushData = [...sortedData];
 
     const dataWithGaps: (DataPoint | { timestamp: number, isGap: boolean, [key:string]: any })[] = [];
     const twoHours = 2 * 60 * 60 * 1000;
@@ -156,7 +159,7 @@ export function ChartDisplay({
     const first = sortedData[0]?.timestamp || 0;
     const last = sortedData[sortedData.length - 1]?.timestamp || 0;
     
-    return { processedData: dataWithGaps, visibleRange: last - first };
+    return { processedData: dataWithGaps, visibleRange: last - first, brushData: cleanBrushData };
 
   }, [data, dateRange, selectedMetrics]);
   
@@ -297,7 +300,7 @@ export function ChartDisplay({
         <ResponsiveContainer width="100%" height={450}>
           <LineChart 
             data={processedData} 
-            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -328,7 +331,7 @@ export function ChartDisplay({
             />}
             
             <Tooltip content={<CustomTooltipContent />} />
-            <Legend />
+            <Legend wrapperStyle={{ bottom: 25, left: 20 }}/>
             
             {leftMetrics.map((metric) => (
               <Line
@@ -367,6 +370,25 @@ export function ChartDisplay({
                 />
             ) : null}
 
+            <Brush 
+              dataKey="timestamp" 
+              height={30} 
+              stroke="hsl(var(--primary))"
+              tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
+              onChange={handleBrushChangeCallback}
+              data={brushData}
+            >
+                <LineChart>
+                  {leftMetrics.map((metric) => (
+                    <Line key={metric} type="monotone" dataKey={metric} stroke={getLineColor(metric)} dot={false} yAxisId="left" />
+                  ))}
+                  {rightMetrics.map((metric) => (
+                    <Line key={metric} type="monotone" dataKey={metric} stroke={getLineColor(metric)} dot={false} yAxisId="right" />
+                  ))}
+                  <YAxis yAxisId="left" hide />
+                  <YAxis yAxisId="right" hide />
+                </LineChart>
+            </Brush>
           </LineChart>
         </ResponsiveContainer>
       </CardContent>

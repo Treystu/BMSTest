@@ -138,7 +138,7 @@ export default function Home() {
         }
 
     } catch (e: any) {
-        console.error(`[handleNewDataPoint] Failed to parse data for battery ${batteryId}`, e.message, `Raw data: "${extractedData}"`);
+        console.error(`[handleNewDataPoint] Failed to parse data for battery ${batteryId}`, e, `Raw data: "${extractedData}"`);
         toast({
             title: 'Data Parsing Error',
             description: `Could not parse data for battery ${batteryId}. Error: ${e.message}`,
