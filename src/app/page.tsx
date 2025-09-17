@@ -48,15 +48,13 @@ const getFormattedDate = (timestamp: number | Date | string, formatStr: string):
     }
 };
 
-const mergeAndSortHistory = (histories: DataPoint[][]): DataPoint[] => {
-    const dataMap = new Map<number, DataPoint>();
+const mergeAndSortHistory = <T extends { timestamp: number }>(histories: T[][]): T[] => {
+    const dataMap = new Map<number, T>();
 
     for (const history of histories) {
         for (const point of history) {
-            // Ensure point and timestamp are valid before processing
             if (point && typeof point.timestamp === 'number' && !isNaN(point.timestamp)) {
                 const existing = dataMap.get(point.timestamp);
-                // Merge new point with existing point at the same timestamp
                 if (existing) {
                     dataMap.set(point.timestamp, { ...existing, ...point });
                 } else {
@@ -66,7 +64,6 @@ const mergeAndSortHistory = (histories: DataPoint[][]): DataPoint[] => {
         }
     }
     
-    // Sort the merged data points by timestamp
     return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 }
 
@@ -117,13 +114,17 @@ export default function Home() {
         
         setDataByBattery(prev => {
             const existingHistory = prev[batteryId]?.history || [];
-            const combinedHistory = mergeAndSortHistory([existingHistory, [dataPoint]]);
+            const existingRaw = prev[batteryId]?.rawExtractions || [];
+            
+            const combinedHistory = mergeAndSortHistory<DataPoint>([existingHistory, [dataPoint]]);
+            const combinedRaw = mergeAndSortHistory<ExtractionResult>([existingRaw, [extractionData]]);
             
             return {
                 ...prev,
                 [batteryId]: {
                     ...prev[batteryId],
-                    history: combinedHistory
+                    history: combinedHistory,
+                    rawExtractions: combinedRaw,
                 }
             };
         });
@@ -153,21 +154,29 @@ export default function Home() {
         const mergedData = { ...prevData };
         for (const batteryId in newData) {
             const newHistory = newData[batteryId].history || [];
+            const newRawExtractions = newData[batteryId].rawExtractions || [];
+
             if (newData[batteryId].processedFileNames) {
-                newData[batteryId].processedFileNames.forEach(name => newFileNames.add(name));
+                newData[batteryId].processedFileNames?.forEach(name => newFileNames.add(name));
             }
             const existingHistory = mergedData[batteryId]?.history || [];
-            const combined = mergeAndSortHistory([existingHistory, newHistory]);
+            const existingRawExtractions = mergedData[batteryId]?.rawExtractions || [];
+            
+            const combinedHistory = mergeAndSortHistory<DataPoint>([existingHistory, newHistory]);
+            const combinedRaw = mergeAndSortHistory<ExtractionResult>([existingRawExtractions, newRawExtractions]);
             
             const existingChartInfo = mergedData[batteryId]?.chartInfo;
             const newChartInfo = newData[batteryId].chartInfo;
+            
+            const allFileNames = Array.from(new Set([...(mergedData[batteryId]?.processedFileNames || []), ...(newData[batteryId].processedFileNames || [])]));
 
             mergedData[batteryId] = {
                 ...mergedData[batteryId],
                 ...newData[batteryId],
-                history: combined,
+                history: combinedHistory,
+                rawExtractions: combinedRaw,
                 chartInfo: newChartInfo || existingChartInfo || null,
-                processedFileNames: Array.from(new Set([...(mergedData[batteryId]?.processedFileNames || []), ...(newData[batteryId].processedFileNames || [])]))
+                processedFileNames: allFileNames
             }
         }
         return mergedData;
@@ -188,7 +197,6 @@ export default function Home() {
 
   const latestDataPoint = useMemo(() => {
     if (dataHistory.length > 0) {
-      // Data is already sorted, so the last element is the latest
       return dataHistory[dataHistory.length - 1];
     }
     return null;
@@ -205,7 +213,6 @@ export default function Home() {
         });
       });
     }
-    // Ensure core metrics are always available for selection
     Object.keys(initialMetrics).forEach(m => allMetrics.add(m));
     return Array.from(allMetrics);
   }, [dataHistory]);

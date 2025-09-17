@@ -120,7 +120,6 @@ export function ImageUploader({
                 const zipEntry = zip.files[relativePath];
                 if (!zipEntry.dir && isImageFile(zipEntry.name)) {
                     const blob = await zipEntry.async('blob');
-                    // Force a valid image MIME type if the original is generic
                     const imageType = blob.type === 'application/octet-stream' ? 'image/png' : blob.type;
                     const file = new File([blob], relativePath, { type: imageType });
                     newRawFiles.push({ file, name: relativePath });
@@ -138,7 +137,6 @@ export function ImageUploader({
             const reader = new FileReader();
             reader.onloadend = () => {
                 let dataUri = reader.result as string;
-                // Forcefully correct the MIME type in the data URI itself if it's wrong
                 if (dataUri.startsWith('data:application/octet-stream')) {
                   dataUri = dataUri.replace('data:application/octet-stream', 'data:image/png');
                 }
@@ -161,7 +159,6 @@ export function ImageUploader({
     const duplicatesInQueue = newImageFiles.filter(f => currentQueueNames.includes(f.name));
 
     if (duplicatesInQueue.length > 0) {
-        // This handles files that are duplicates within the current UI queue, not the global processed list.
         setDuplicateFiles({ newFiles: newImageFiles, existingNames: currentQueueNames });
     } else {
         addFilesToQueue(newImageFiles);
@@ -214,10 +211,8 @@ export function ImageUploader({
       return;
     }
     
-    // Create a deep copy to avoid modifying the original state
     const dataToExport = JSON.parse(JSON.stringify(dataByBattery));
 
-    // Attach the master list of processed filenames to each battery object for future imports
     const allFileNames = Array.from(processedFileNames);
     Object.keys(dataToExport).forEach(batteryId => {
         dataToExport[batteryId].processedFileNames = allFileNames;
@@ -275,8 +270,7 @@ export function ImageUploader({
         let successfulExtractions = 0;
         let failedExtractions = 0;
 
-        // Adaptive concurrency settings
-        let concurrency = 5; // Start with 5 concurrent requests
+        let concurrency = 5;
         const maxConcurrency = 15;
         const minConcurrency = 2;
 
@@ -288,7 +282,7 @@ export function ImageUploader({
             const queue = [...filesToProcess];
             let activePromises = 0;
 
-            return new Promise<void>((resolve, reject) => {
+            return new Promise<void>((resolve) => {
                 const executeNext = async () => {
                     if (queue.length === 0 && activePromises === 0) {
                         resolve();
@@ -321,14 +315,12 @@ export function ImageUploader({
                                     }
                                     updateFileStatus(file.id, 'success', { verifiedMetrics });
                                     
-                                    // Increase concurrency on success
                                     concurrency = Math.min(maxConcurrency, concurrency + 1);
 
                                 } else {
                                     failedExtractions++;
                                     updateFileStatus(file.id, 'error', { error: result.error });
 
-                                    // Decrease concurrency on failure
                                     concurrency = Math.max(minConcurrency, Math.floor(concurrency / 2));
                                 }
                             })
@@ -336,7 +328,6 @@ export function ImageUploader({
                                 failedExtractions++;
                                 updateFileStatus(file.id, 'error', { error: e.message });
                                 
-                                // Decrease concurrency on critical failure
                                 concurrency = Math.max(minConcurrency, Math.floor(concurrency / 2));
                             })
                             .finally(() => {
@@ -347,7 +338,6 @@ export function ImageUploader({
                             });
                     }
                 };
-                // Start the initial executions
                 for(let i=0; i<concurrency; i++){
                     executeNext();
                 }

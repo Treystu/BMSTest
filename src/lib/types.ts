@@ -47,6 +47,7 @@ export type BatteryAnalysis = {
 
 export type BatteryData = {
   history: DataPoint[];
+  rawExtractions: ExtractionResult[];
   chartInfo: ChartInfo | null;
   processedFileNames?: string[];
 }
