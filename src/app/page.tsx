@@ -328,7 +328,6 @@ export default function Home() {
                     dateRange={dateRange}
                     chartInfo={chartInfo}
                     isLoading={isLoading && dataHistory.length === 0}
-                    onBrushChange={handleBrushChange}
                     />
                 </>
                 ) : (
@@ -344,5 +343,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
