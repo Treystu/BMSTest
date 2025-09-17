@@ -135,12 +135,12 @@ export function ChartDisplay({
     return { leftMetrics: left, rightMetrics: right, allMetrics: all };
   }, [selectedMetrics]);
 
-  const { processedData, visibleRange } = useMemo(() => {
-    if (!data || data.length === 0) return { processedData: [], visibleRange: 0 };
+  const { processedData, timeFilteredData, visibleRange } = useMemo(() => {
+    if (!data || data.length === 0) return { processedData: [], timeFilteredData: [], visibleRange: 0 };
     
     const now = Date.now();
     // Data is assumed to be sorted, so we just filter.
-    const timeFilteredData = data.filter(d => {
+    const filtered = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
         switch (dateRange) {
             case '1d': return d.timestamp >= subDays(now, 1).getTime();
@@ -150,17 +150,17 @@ export function ChartDisplay({
         }
     });
 
-    if (timeFilteredData.length === 0) return { processedData: [], visibleRange: 0 };
+    if (filtered.length === 0) return { processedData: [], timeFilteredData: [], visibleRange: 0 };
 
     const dataWithGaps: (DataPoint | { timestamp: number, isGap: boolean, [key:string]: any })[] = [];
     const twoHours = 2 * 60 * 60 * 1000;
 
-    for (let i = 0; i < timeFilteredData.length; i++) {
-        dataWithGaps.push(timeFilteredData[i]);
-        if (i < timeFilteredData.length - 1) {
-            const diff = timeFilteredData[i+1].timestamp - timeFilteredData[i].timestamp;
+    for (let i = 0; i < filtered.length; i++) {
+        dataWithGaps.push(filtered[i]);
+        if (i < filtered.length - 1) {
+            const diff = filtered[i+1].timestamp - filtered[i].timestamp;
             if (diff > twoHours) {
-                const nullPoint: any = { timestamp: timeFilteredData[i].timestamp + twoHours/2, isGap: true };
+                const nullPoint: any = { timestamp: filtered[i].timestamp + twoHours/2, isGap: true };
                 allMetrics.forEach(m => {
                   nullPoint[m] = null
                 });
@@ -169,10 +169,10 @@ export function ChartDisplay({
         }
     }
     
-    const first = timeFilteredData[0]?.timestamp || 0;
-    const last = timeFilteredData[timeFilteredData.length - 1]?.timestamp || 0;
+    const first = filtered[0]?.timestamp || 0;
+    const last = filtered[filtered.length - 1]?.timestamp || 0;
     
-    return { processedData: dataWithGaps, visibleRange: last - first };
+    return { processedData: dataWithGaps, timeFilteredData: filtered, visibleRange: last - first };
 
   }, [data, dateRange, allMetrics]);
   
@@ -375,16 +375,7 @@ export function ChartDisplay({
               stroke="hsl(var(--primary))"
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
               onChange={handleBrushChangeCallback}
-              // Pass the filtered (but not gap-inserted) data to the brush
-              data={data.filter(d => {
-                  const now = Date.now();
-                  switch (dateRange) {
-                      case '1d': return d.timestamp >= subDays(now, 1).getTime();
-                      case '1w': return d.timestamp >= subWeeks(now, 1).getTime();
-                      case '1m': return d.timestamp >= subMonths(now, 1).getTime();
-                      default: return true;
-                  }
-              })}
+              data={timeFilteredData}
             >
                 <LineChart>
                   {allMetrics.map((metric) => (

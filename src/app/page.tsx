@@ -48,15 +48,18 @@ const getFormattedDate = (timestamp: number | Date | string, formatStr: string):
     }
 };
 
-const mergeAndSortHistory = <T extends { timestamp: number }>(...histories: T[][]): T[] => {
+export function mergeAndSortHistory<T extends { timestamp: number }>(existing: T[] = [], incoming: T[] = []): T[] {
     const dataMap = new Map<number, T>();
 
-    for (const history of histories) {
-        for (const point of history) {
-            if (point && typeof point.timestamp === 'number' && !isNaN(point.timestamp)) {
-                // New points will overwrite existing ones with the same timestamp
-                dataMap.set(point.timestamp, point);
-            }
+    for (const point of existing) {
+        if (point && typeof point.timestamp === 'number' && !isNaN(point.timestamp)) {
+            dataMap.set(point.timestamp, point);
+        }
+    }
+    for (const point of incoming) {
+        if (point && typeof point.timestamp === 'number' && !isNaN(point.timestamp)) {
+            // New points will overwrite existing ones with the same timestamp
+            dataMap.set(point.timestamp, point);
         }
     }
     
