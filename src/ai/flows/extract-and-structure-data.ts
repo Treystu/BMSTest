@@ -49,7 +49,7 @@ Extract their full numerical values. Do not extract deltas or other differences 
 
 Then, extract any other metrics you can find.
 
-Finally, structure all extracted metrics into a valid JSON object.
+Finally, structure all extracted metrics into a valid JSON object. You MUST ensure that every key-value pair is correctly formatted. For example, instead of "MOS: 20°C", you must write "MOS": "20°C".
 
 Image: {{media url=photoDataUri}}
 
