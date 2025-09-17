@@ -48,18 +48,14 @@ const getFormattedDate = (timestamp: number | Date | string, formatStr: string):
     }
 };
 
-const mergeAndSortHistory = <T extends { timestamp: number }>(histories: T[][]): T[] => {
+const mergeAndSortHistory = <T extends { timestamp: number }>(...histories: T[][]): T[] => {
     const dataMap = new Map<number, T>();
 
     for (const history of histories) {
         for (const point of history) {
             if (point && typeof point.timestamp === 'number' && !isNaN(point.timestamp)) {
-                const existing = dataMap.get(point.timestamp);
-                if (existing) {
-                    dataMap.set(point.timestamp, { ...existing, ...point });
-                } else {
-                    dataMap.set(point.timestamp, point);
-                }
+                // New points will overwrite existing ones with the same timestamp
+                dataMap.set(point.timestamp, point);
             }
         }
     }
@@ -116,8 +112,8 @@ export default function Home() {
             const existingHistory = prev[batteryId]?.history || [];
             const existingRaw = prev[batteryId]?.rawExtractions || [];
             
-            const combinedHistory = mergeAndSortHistory<DataPoint>([existingHistory, [dataPoint]]);
-            const combinedRaw = mergeAndSortHistory<ExtractionResult>([existingRaw, [extractionData]]);
+            const combinedHistory = mergeAndSortHistory(existingHistory, [dataPoint]);
+            const combinedRaw = mergeAndSortHistory(existingRaw, [extractionData]);
             
             return {
                 ...prev,
@@ -162,8 +158,8 @@ export default function Home() {
             const existingHistory = mergedData[batteryId]?.history || [];
             const existingRawExtractions = mergedData[batteryId]?.rawExtractions || [];
             
-            const combinedHistory = mergeAndSortHistory<DataPoint>([existingHistory, newHistory]);
-            const combinedRaw = mergeAndSortHistory<ExtractionResult>([existingRawExtractions, newRawExtractions]);
+            const combinedHistory = mergeAndSortHistory(existingHistory, newHistory);
+            const combinedRaw = mergeAndSortHistory(existingRawExtractions, newRawExtractions);
             
             const existingChartInfo = mergedData[batteryId]?.chartInfo;
             const newChartInfo = newData[batteryId].chartInfo;
