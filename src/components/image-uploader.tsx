@@ -262,66 +262,110 @@ export function ImageUploader({
   const handleSubmit = () => {
     const filesToProcess = imageFiles.filter(f => f.status === 'queued');
     if (filesToProcess.length === 0) {
-      toast({ title: 'No New Images to Process', description: 'Please select images or re-submit failed ones.', variant: 'destructive' });
-      return;
+        toast({ title: 'No New Images to Process', description: 'Please select images or re-submit failed ones.', variant: 'destructive' });
+        return;
     }
 
     setIsLoading(true);
     setProgress(0);
+
     startTransition(async () => {
-      let successfulExtractions = 0;
-      let failedExtractions = 0;
-      
-      const updateFileStatus = (id: string, status: ImageFile['status'], data?: { error?: string, verifiedMetrics?: { [key: string]: boolean } }) => {
-        setImageFiles(prev => prev.map(f => f.id === id ? { ...f, status, ...data } : f));
-      };
+        const totalFiles = filesToProcess.length;
+        let processedCount = 0;
+        let successfulExtractions = 0;
+        let failedExtractions = 0;
 
-      for (let i = 0; i < filesToProcess.length; i++) {
-        const file = filesToProcess[i];
-        console.log(`[ImageUploader] Processing image ${i + 1}/${filesToProcess.length}: ${file.name}`);
-        updateFileStatus(file.id, 'processing');
-        try {
-            const result = await processImage(file.preview, file.name);
+        // Adaptive concurrency settings
+        let concurrency = 5; // Start with 5 concurrent requests
+        const maxConcurrency = 15;
+        const minConcurrency = 2;
 
-            if (result.success && result.data) {
-              onNewDataPoint(result.data);
-              successfulExtractions++;
-              
-              const verifiedMetrics: { [key: string]: boolean } = {};
-              try {
-                const parsedData = JSON.parse(result.data.extractedData);
-                const extractedKeys = Object.keys(parsedData).map(k => k.toLowerCase());
-                coreMetrics.forEach(coreMetric => {
-                  verifiedMetrics[coreMetric] = extractedKeys.some(ek => ek.includes(coreMetric));
-                });
-              } catch {
-                coreMetrics.forEach(coreMetric => { verifiedMetrics[coreMetric] = false; });
-              }
+        const updateFileStatus = (id: string, status: ImageFile['status'], data?: { error?: string, verifiedMetrics?: { [key: string]: boolean } }) => {
+            setImageFiles(prev => prev.map(f => f.id === id ? { ...f, status, ...data } : f));
+        };
 
-              updateFileStatus(file.id, 'success', { verifiedMetrics });
-              console.log(`[ImageUploader] Success for ${file.name}`);
-            } else {
-              failedExtractions++;
-              updateFileStatus(file.id, 'error', { error: result.error });
-              console.error(`[ImageUploader] Failure for ${file.name}:`, result.error);
-            }
-        } catch (e: any) {
-            failedExtractions++;
-            updateFileStatus(file.id, 'error', { error: e.message });
-            console.error(`[ImageUploader] Critical Failure for ${file.name}:`, e);
-        }
-        setProgress(((i + 1) / filesToProcess.length) * 100);
-      }
-      
-      toast({
-        title: 'Data Extraction Complete',
-        description: `${successfulExtractions} out of ${filesToProcess.length} images processed. ${failedExtractions > 0 ? `${failedExtractions} failed.` : ''}`,
-        variant: failedExtractions > 0 ? 'destructive' : 'default',
-      });
-      
-      setIsLoading(false);
+        const processQueue = async () => {
+            const queue = [...filesToProcess];
+            let activePromises = 0;
+
+            return new Promise<void>((resolve, reject) => {
+                const executeNext = async () => {
+                    if (queue.length === 0 && activePromises === 0) {
+                        resolve();
+                        return;
+                    }
+                    while (activePromises < concurrency && queue.length > 0) {
+                        const file = queue.shift();
+                        if (!file) continue;
+
+                        activePromises++;
+                        
+                        updateFileStatus(file.id, 'processing');
+                        console.log(`[ImageUploader] Processing image: ${file.name}. Concurrency: ${concurrency}`);
+
+                        processImage(file.preview, file.name)
+                            .then(result => {
+                                if (result.success && result.data) {
+                                    onNewDataPoint(result.data);
+                                    successfulExtractions++;
+                                    
+                                    const verifiedMetrics: { [key: string]: boolean } = {};
+                                    try {
+                                        const parsedData = JSON.parse(result.data.extractedData);
+                                        const extractedKeys = Object.keys(parsedData).map(k => k.toLowerCase());
+                                        coreMetrics.forEach(coreMetric => {
+                                            verifiedMetrics[coreMetric] = extractedKeys.some(ek => ek.includes(coreMetric));
+                                        });
+                                    } catch {
+                                        coreMetrics.forEach(coreMetric => { verifiedMetrics[coreMetric] = false; });
+                                    }
+                                    updateFileStatus(file.id, 'success', { verifiedMetrics });
+                                    
+                                    // Increase concurrency on success
+                                    concurrency = Math.min(maxConcurrency, concurrency + 1);
+
+                                } else {
+                                    failedExtractions++;
+                                    updateFileStatus(file.id, 'error', { error: result.error });
+
+                                    // Decrease concurrency on failure
+                                    concurrency = Math.max(minConcurrency, Math.floor(concurrency / 2));
+                                }
+                            })
+                            .catch(e => {
+                                failedExtractions++;
+                                updateFileStatus(file.id, 'error', { error: e.message });
+                                
+                                // Decrease concurrency on critical failure
+                                concurrency = Math.max(minConcurrency, Math.floor(concurrency / 2));
+                            })
+                            .finally(() => {
+                                activePromises--;
+                                processedCount++;
+                                setProgress((processedCount / totalFiles) * 100);
+                                executeNext();
+                            });
+                    }
+                };
+                // Start the initial executions
+                for(let i=0; i<concurrency; i++){
+                    executeNext();
+                }
+            });
+        };
+
+        await processQueue();
+        
+        toast({
+            title: 'Data Extraction Complete',
+            description: `${successfulExtractions} out of ${totalFiles} images processed. ${failedExtractions > 0 ? `${failedExtractions} failed.` : ''}`,
+            variant: failedExtractions > 0 ? 'destructive' : 'default',
+        });
+        
+        setIsLoading(false);
     });
-  };
+};
+
 
   const hasFailedUploads = imageFiles.some(f => f.status === 'error');
   const hasProcessedFiles = imageFiles.some(f => f.status !== 'queued');
@@ -463,5 +507,3 @@ export function ImageUploader({
     </>
   );
 }
-
-    
