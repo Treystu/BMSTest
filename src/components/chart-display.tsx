@@ -385,8 +385,6 @@ export function ChartDisplay({
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
               onChange={handleBrushChangeCallback}
               data={brushData}
-              startIndex={0}
-              endIndex={Math.min(99, brushData.length - 1)}
             >
                 <LineChart>
                   {allMetrics.map((metric) => (
