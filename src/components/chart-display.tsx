@@ -51,10 +51,12 @@ const lineColors: { [key: string]: string } = {
 };
 
 const getLineColor = (metric: string): string => {
-    if (lineColors[metric]) {
-        return lineColors[metric];
+    const lowerMetric = metric.toLowerCase();
+    for (const key in lineColors) {
+        if (lowerMetric.includes(key)) {
+            return lineColors[key];
+        }
     }
-    // Fallback for custom metrics
     let hash = 0;
     for (let i = 0; i < metric.length; i++) {
         hash = metric.charCodeAt(i) + ((hash << 5) - hash);
@@ -114,10 +116,29 @@ export function ChartDisplay({
   const [zoomState, setZoomState] = useState<ZoomState>({ x1: null, y1: null, x2: null, y2: null, refAreaLeft: '', refAreaRight: '' });
   const [zoomDomain, setZoomDomain] = useState<ZoomDomain | null>(null);
 
+  const { leftMetrics, rightMetrics, allMetrics } = useMemo(() => {
+    const left: string[] = [];
+    const right: string[] = [];
+    const all: string[] = [];
+    
+    Object.keys(selectedMetrics).forEach(metric => {
+        if (selectedMetrics[metric as keyof SelectedMetrics]) {
+            all.push(metric);
+            if (leftAxisMetricSet.has(metric)) {
+                left.push(metric);
+            } else {
+                right.push(metric);
+            }
+        }
+    });
+
+    return { leftMetrics: left, rightMetrics: right, allMetrics: all };
+  }, [selectedMetrics]);
+
   const { processedData, visibleRange, brushData } = useMemo(() => {
     if (!data || data.length === 0) return { processedData: [], visibleRange: 0, brushData: [] };
     
-    const now = new Date();
+    const now = Date.now();
     const timeFilteredData = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
         switch (dateRange) {
@@ -133,7 +154,7 @@ export function ChartDisplay({
     // CRITICAL: Sort data chronologically before any other processing.
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
 
-    // Create a separate, sorted dataset for the brush that does NOT have gaps
+    // This is the clean, sorted data for the brush.
     const cleanBrushData = [...sortedData];
 
     const dataWithGaps: (DataPoint | { timestamp: number, isGap: boolean, [key:string]: any })[] = [];
@@ -145,11 +166,9 @@ export function ChartDisplay({
             const diff = sortedData[i+1].timestamp - sortedData[i].timestamp;
             if (diff > twoHours) {
                 // Insert a point with null values to create a visual gap
-                const nullPoint = { timestamp: sortedData[i].timestamp + twoHours/2, isGap: true };
-                Object.keys(selectedMetrics).forEach(m => {
-                  if(selectedMetrics[m as keyof typeof selectedMetrics]) {
-                    nullPoint[m] = null
-                  }
+                const nullPoint: any = { timestamp: sortedData[i].timestamp + twoHours/2, isGap: true };
+                allMetrics.forEach(m => {
+                  nullPoint[m] = null
                 });
                 dataWithGaps.push(nullPoint);
             }
@@ -161,25 +180,8 @@ export function ChartDisplay({
     
     return { processedData: dataWithGaps, visibleRange: last - first, brushData: cleanBrushData };
 
-  }, [data, dateRange, selectedMetrics]);
+  }, [data, dateRange, allMetrics]);
   
-  const { leftMetrics, rightMetrics } = useMemo(() => {
-    const left: string[] = [];
-    const right: string[] = [];
-    
-    Object.keys(selectedMetrics).forEach(metric => {
-        if (selectedMetrics[metric as keyof SelectedMetrics]) {
-            if (leftAxisMetricSet.has(metric)) {
-                left.push(metric);
-            } else {
-                right.push(metric);
-            }
-        }
-    });
-
-    return { leftMetrics: left, rightMetrics: right };
-  }, [selectedMetrics]);
-
   const handleMouseDown = (e: any) => {
     if (!e || !e.activeLabel) return;
     setZoomState({ ...zoomState, refAreaLeft: e.activeLabel, refAreaRight: e.activeLabel, x1: e.activeCoordinate.x, y1: e.activeCoordinate.y });
@@ -210,27 +212,33 @@ export function ChartDisplay({
       }
       
       const { y1, y2 } = zoomState;
+      if (y1 === null || y2 === null) {
+        resetZoom();
+        return;
+      }
       const yMinPixel = (leftYAxis || rightYAxis).y; // top of the axis
       const yMaxPixel = yMinPixel + (leftYAxis || rightYAxis).height; // bottom of the axis
 
       // Normalize pixel coords (0 to 1) from top to bottom
-      const y1Norm = ((y1 as number) - yMinPixel) / (yMaxPixel - yMinPixel);
-      const y2Norm = ((y2 as number) - yMinPixel) / (yMaxPixel - yMinPixel);
+      const y1Norm = (y1 - yMinPixel) / (yMaxPixel - yMinPixel);
+      const y2Norm = (y2 - yMinPixel) / (yMaxPixel - yMinPixel);
 
       let newDomainYLeft: [number, number] = ['auto', 'auto'] as any;
       let newDomainYRight: [number, number] = ['auto', 'auto'] as any;
       
       if (leftYAxis) {
         const [yLeftMinDom, yLeftMaxDom] = leftYAxis.domain;
-        const yLeft1 = yLeftMaxDom - y1Norm * (yLeftMaxDom - yLeftMinDom);
-        const yLeft2 = yLeftMaxDom - y2Norm * (yLeftMaxDom - yLeftMinDom);
+        const yLeftRange = yLeftMaxDom - yLeftMinDom;
+        const yLeft1 = yLeftMaxDom - y1Norm * yLeftRange;
+        const yLeft2 = yLeftMaxDom - y2Norm * yLeftRange;
         newDomainYLeft = [Math.min(yLeft1, yLeft2), Math.max(yLeft1, yLeft2)];
       }
 
       if (rightYAxis) {
         const [yRightMinDom, yRightMaxDom] = rightYAxis.domain;
-        const yRight1 = yRightMaxDom - y1Norm * (yRightMaxDom - yRightMinDom);
-        const yRight2 = yRightMaxDom - y2Norm * (yRightMaxDom - yRightMinDom);
+        const yRightRange = yRightMaxDom - yRightMinDom;
+        const yRight1 = yRightMaxDom - y1Norm * yRightRange;
+        const yRight2 = yRightMaxDom - y2Norm * yRightRange;
         newDomainYRight = [Math.min(yRight1, yRight2), Math.max(yRight1, yRight2)];
       }
       
@@ -377,13 +385,20 @@ export function ChartDisplay({
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
               onChange={handleBrushChangeCallback}
               data={brushData}
+              startIndex={0}
+              endIndex={Math.min(99, brushData.length - 1)}
             >
                 <LineChart>
-                  {leftMetrics.map((metric) => (
-                    <Line key={metric} type="monotone" dataKey={metric} stroke={getLineColor(metric)} dot={false} yAxisId="left" />
-                  ))}
-                  {rightMetrics.map((metric) => (
-                    <Line key={metric} type="monotone" dataKey={metric} stroke={getLineColor(metric)} dot={false} yAxisId="right" />
+                  {allMetrics.map((metric) => (
+                    <Line 
+                      key={`${metric}-brush`}
+                      type="monotone"
+                      dataKey={metric}
+                      stroke={getLineColor(metric)}
+                      dot={false}
+                      connectNulls={false}
+                      yAxisId={leftAxisMetricSet.has(metric) ? 'left' : 'right'}
+                    />
                   ))}
                   <YAxis yAxisId="left" hide />
                   <YAxis yAxisId="right" hide />
