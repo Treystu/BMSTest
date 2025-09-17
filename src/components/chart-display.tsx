@@ -130,6 +130,7 @@ export function ChartDisplay({
 
     if (timeFilteredData.length === 0) return { processedData: [], visibleRange: 0 };
     
+    // CRITICAL: Sort data chronologically before any other processing.
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
 
     const dataWithGaps: (DataPoint | { timestamp: number, isGap: boolean, [key:string]: any })[] = [];
@@ -140,6 +141,7 @@ export function ChartDisplay({
         if (i < sortedData.length - 1) {
             const diff = sortedData[i+1].timestamp - sortedData[i].timestamp;
             if (diff > twoHours) {
+                // Insert a point with null values to create a visual gap
                 const nullPoint = { timestamp: sortedData[i].timestamp + twoHours/2, isGap: true };
                 Object.keys(selectedMetrics).forEach(m => {
                   if(selectedMetrics[m as keyof typeof selectedMetrics]) {
@@ -197,33 +199,41 @@ export function ChartDisplay({
 
       const leftYAxis = e.yAxisMap?.left;
       const rightYAxis = e.yAxisMap?.right;
-
-      if (!leftYAxis || !rightYAxis) {
+      
+      // Ensure both axes are available before calculating Y domain
+      if (!leftYAxis && !rightYAxis) {
           resetZoom();
           return;
       }
       
-      const [yLeftMinDom, yLeftMaxDom] = leftYAxis.domain;
-      const [yRightMinDom, yRightMaxDom] = rightYAxis.domain;
-
       const { y1, y2 } = zoomState;
-      const yMinPixel = leftYAxis.y; // top of the axis
-      const yMaxPixel = leftYAxis.y + leftYAxis.height; // bottom of the axis
+      const yMinPixel = (leftYAxis || rightYAxis).y; // top of the axis
+      const yMaxPixel = yMinPixel + (leftYAxis || rightYAxis).height; // bottom of the axis
 
       // Normalize pixel coords (0 to 1) from top to bottom
-      const y1Norm = (y1 as number - yMinPixel) / (yMaxPixel - yMinPixel);
-      const y2Norm = (y2 as number - yMinPixel) / (yMaxPixel - yMinPixel);
+      const y1Norm = ((y1 as number) - yMinPixel) / (yMaxPixel - yMinPixel);
+      const y2Norm = ((y2 as number) - yMinPixel) / (yMaxPixel - yMinPixel);
+
+      let newDomainYLeft: [number, number] = ['auto', 'auto'] as any;
+      let newDomainYRight: [number, number] = ['auto', 'auto'] as any;
       
-      const yLeft1 = yLeftMaxDom - y1Norm * (yLeftMaxDom - yLeftMinDom);
-      const yLeft2 = yLeftMaxDom - y2Norm * (yLeftMaxDom - yLeftMinDom);
-      const yRight1 = yRightMaxDom - y1Norm * (yRightMaxDom - yRightMinDom);
-      const yRight2 = yRightMaxDom - y2Norm * (yRightMaxDom - yRightMinDom);
-      
-      const newDomainYLeft: [number, number] = [Math.min(yLeft1, yLeft2), Math.max(yLeft1, yLeft2)];
-      const newDomainYRight: [number, number] = [Math.min(yRight1, yRight2), Math.max(yRight1, yRight2)];
+      if (leftYAxis) {
+        const [yLeftMinDom, yLeftMaxDom] = leftYAxis.domain;
+        const yLeft1 = yLeftMaxDom - y1Norm * (yLeftMaxDom - yLeftMinDom);
+        const yLeft2 = yLeftMaxDom - y2Norm * (yLeftMaxDom - yLeftMinDom);
+        newDomainYLeft = [Math.min(yLeft1, yLeft2), Math.max(yLeft1, yLeft2)];
+      }
+
+      if (rightYAxis) {
+        const [yRightMinDom, yRightMaxDom] = rightYAxis.domain;
+        const yRight1 = yRightMaxDom - y1Norm * (yRightMaxDom - yRightMinDom);
+        const yRight2 = yRightMaxDom - y2Norm * (yRightMaxDom - yRightMinDom);
+        newDomainYRight = [Math.min(yRight1, yRight2), Math.max(yRight1, yRight2)];
+      }
       
       setZoomDomain({ x: newDomainX, yLeft: newDomainYLeft, yRight: newDomainYRight });
     }
+    // Reset selection rectangle
     setZoomState({ x1: null, y1: null, x2: null, y2: null, refAreaLeft: '', refAreaRight: '' });
   };
   
@@ -302,20 +312,20 @@ export function ChartDisplay({
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
               interval="preserveStartEnd"
             />
-            <YAxis 
+            {leftMetrics.length > 0 && <YAxis 
                 allowDataOverflow
                 yAxisId="left" 
                 orientation="left" 
                 stroke="hsl(var(--foreground))" 
                 domain={zoomDomain ? zoomDomain.yLeft : ['auto', 'auto']} 
-            />
-            <YAxis 
+            />}
+            {rightMetrics.length > 0 && <YAxis 
                 allowDataOverflow
                 yAxisId="right" 
                 orientation="right" 
                 stroke="hsl(var(--foreground))" 
                 domain={zoomDomain ? zoomDomain.yRight : ['auto', 'auto']}
-            />
+            />}
             
             <Tooltip content={<CustomTooltipContent />} />
             <Legend />
