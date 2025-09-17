@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useCallback, useState, useRef } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ type ChartDisplayProps = {
   dateRange: string;
   chartInfo: ChartInfo | null;
   isLoading: boolean;
+  onBrushChange: (range: BrushRange | null) => void;
 };
 
 type ZoomState = {
@@ -31,6 +32,8 @@ type ZoomState = {
   y1: number | string | null;
   x2: number | string | null;
   y2: number | string | null;
+  refAreaLeft: string | number;
+  refAreaRight: string | number;
 };
 
 type ZoomDomain = {
@@ -51,6 +54,7 @@ const getLineColor = (metric: string): string => {
     if (lineColors[metric]) {
         return lineColors[metric];
     }
+    // Fallback for custom metrics
     let hash = 0;
     for (let i = 0; i < metric.length; i++) {
         hash = metric.charCodeAt(i) + ((hash << 5) - hash);
@@ -104,9 +108,10 @@ export function ChartDisplay({
   dateRange,
   chartInfo,
   isLoading,
+  onBrushChange
 }: ChartDisplayProps) {
 
-  const [zoomState, setZoomState] = useState<ZoomState>({ x1: null, y1: null, x2: null, y2: null });
+  const [zoomState, setZoomState] = useState<ZoomState>({ x1: null, y1: null, x2: null, y2: null, refAreaLeft: '', refAreaRight: '' });
   const [zoomDomain, setZoomDomain] = useState<ZoomDomain | null>(null);
 
   const { processedData, visibleRange } = useMemo(() => {
@@ -123,6 +128,8 @@ export function ChartDisplay({
         }
     });
 
+    if (timeFilteredData.length === 0) return { processedData: [], visibleRange: 0 };
+    
     const sortedData = [...timeFilteredData].sort((a, b) => a.timestamp - b.timestamp);
 
     const dataWithGaps: (DataPoint | { timestamp: number, isGap: boolean, [key:string]: any })[] = [];
@@ -134,7 +141,11 @@ export function ChartDisplay({
             const diff = sortedData[i+1].timestamp - sortedData[i].timestamp;
             if (diff > twoHours) {
                 const nullPoint = { timestamp: sortedData[i].timestamp + twoHours/2, isGap: true };
-                Object.keys(selectedMetrics).forEach(m => nullPoint[m] = null);
+                Object.keys(selectedMetrics).forEach(m => {
+                  if(selectedMetrics[m as keyof typeof selectedMetrics]) {
+                    nullPoint[m] = null
+                  }
+                });
                 dataWithGaps.push(nullPoint);
             }
         }
@@ -166,26 +177,24 @@ export function ChartDisplay({
 
   const handleMouseDown = (e: any) => {
     if (!e || !e.activeLabel) return;
-    setZoomState({ ...zoomState, x1: e.activeLabel, y1: e.activeCoordinate.y, x2: e.activeLabel, y2: e.activeCoordinate.y });
+    setZoomState({ ...zoomState, refAreaLeft: e.activeLabel, refAreaRight: e.activeLabel, x1: e.activeCoordinate.x, y1: e.activeCoordinate.y });
   };
 
   const handleMouseMove = (e: any) => {
-    if (zoomState.x1 && e && e.activeLabel) {
-      setZoomState({ ...zoomState, x2: e.activeLabel, y2: e.activeCoordinate.y });
+    if (zoomState.refAreaLeft && e && e.activeLabel) {
+      setZoomState({ ...zoomState, refAreaRight: e.activeLabel, x2: e.activeCoordinate.x, y2: e.activeCoordinate.y });
     }
   };
 
-  const handleMouseUp = (e:any) => {
-    if (zoomState.x1 && zoomState.x2) {
-      const { x1, y1, x2, y2 } = zoomState;
+  const handleMouseUp = (e: any) => {
+    const { refAreaLeft, refAreaRight } = zoomState;
+    if (refAreaLeft && refAreaRight && refAreaLeft !== refAreaRight) {
+        
+      const leftNum = typeof refAreaLeft === 'string' ? parseFloat(refAreaLeft) : refAreaLeft;
+      const rightNum = typeof refAreaRight === 'string' ? parseFloat(refAreaRight) : refAreaRight;
+      
+      const newDomainX: [number, number] = [Math.min(leftNum, rightNum), Math.max(leftNum, rightNum)];
 
-      const yAxis = e.chartY; // The Y-axis pixel position
-      const chartHeight = e.chartHeight;
-
-      // This is an approximation. We need to get the domains of the axes.
-      // Recharts does not provide a direct way to get the scale function outside of custom components.
-      // We will assume a linear scale and approximate the values.
-      // This is a simplification. A more accurate solution would involve chart internals.
       const leftYAxis = e.yAxisMap?.left;
       const rightYAxis = e.yAxisMap?.right;
 
@@ -194,37 +203,39 @@ export function ChartDisplay({
           return;
       }
       
-      const [yLeftMin, yLeftMax] = leftYAxis.domain;
-      const [yRightMin, yRightMax] = rightYAxis.domain;
-      
+      const [yLeftMinDom, yLeftMaxDom] = leftYAxis.domain;
+      const [yRightMinDom, yRightMaxDom] = rightYAxis.domain;
+
+      const { y1, y2 } = zoomState;
       const yMinPixel = leftYAxis.y; // top of the axis
       const yMaxPixel = leftYAxis.y + leftYAxis.height; // bottom of the axis
 
-      // Normalize pixel coords (0 to 1)
-      const y1Norm = (y1 - yMinPixel) / (yMaxPixel - yMinPixel);
-      const y2Norm = (y2 - yMinPixel) / (yMaxPixel - yMinPixel);
+      // Normalize pixel coords (0 to 1) from top to bottom
+      const y1Norm = (y1 as number - yMinPixel) / (yMaxPixel - yMinPixel);
+      const y2Norm = (y2 as number - yMinPixel) / (yMaxPixel - yMinPixel);
       
-      const yLeft1 = yLeftMax - y1Norm * (yLeftMax - yLeftMin);
-      const yLeft2 = yLeftMax - y2Norm * (yLeftMax - yLeftMin);
-      const yRight1 = yRightMax - y1Norm * (yRightMax - yRightMin);
-      const yRight2 = yRightMax - y2Norm * (yRightMax - yRightMin);
+      const yLeft1 = yLeftMaxDom - y1Norm * (yLeftMaxDom - yLeftMinDom);
+      const yLeft2 = yLeftMaxDom - y2Norm * (yLeftMaxDom - yLeftMinDom);
+      const yRight1 = yRightMaxDom - y1Norm * (yRightMaxDom - yRightMinDom);
+      const yRight2 = yRightMaxDom - y2Norm * (yRightMaxDom - yRightMinDom);
       
-      const newDomain: ZoomDomain = {
-        x: [Math.min(x1 as number, x2 as number), Math.max(x1 as number, x2 as number)],
-        yLeft: [Math.min(yLeft1, yLeft2), Math.max(yLeft1, yLeft2)],
-        yRight: [Math.min(yRight1, yRight2), Math.max(yRight1, yRight2)],
-      };
+      const newDomainYLeft: [number, number] = [Math.min(yLeft1, yLeft2), Math.max(yLeft1, yLeft2)];
+      const newDomainYRight: [number, number] = [Math.min(yRight1, yRight2), Math.max(yRight1, yRight2)];
       
-      if (Math.abs((x1 as number) - (x2 as number)) > 1000) { // only zoom if selection is significant
-          setZoomDomain(newDomain);
-      }
+      setZoomDomain({ x: newDomainX, yLeft: newDomainYLeft, yRight: newDomainYRight });
     }
-    setZoomState({ x1: null, y1: null, x2: null, y2: null });
+    setZoomState({ x1: null, y1: null, x2: null, y2: null, refAreaLeft: '', refAreaRight: '' });
   };
-
+  
   const resetZoom = () => {
     setZoomDomain(null);
   };
+  
+  const handleBrushChangeCallback = useCallback((range: any) => {
+    if (range) {
+        onBrushChange({ startIndex: range.startIndex, endIndex: range.endIndex });
+    }
+  }, [onBrushChange]);
 
 
   if (isLoading && data.length === 0) {
@@ -257,7 +268,7 @@ export function ChartDisplay({
     )
   }
 
-  const { x1, x2 } = zoomState;
+  const { refAreaLeft, refAreaRight } = zoomState;
 
   return (
     <Card>
@@ -276,34 +287,34 @@ export function ChartDisplay({
         <ResponsiveContainer width="100%" height={450}>
           <LineChart 
             data={processedData} 
-            margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
           >
-            <CartesianGrid vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis
+              allowDataOverflow
               dataKey="timestamp"
               type="number"
               scale="time"
               domain={zoomDomain ? zoomDomain.x : ['dataMin', 'dataMax']}
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
               interval="preserveStartEnd"
-              allowDataOverflow
             />
             <YAxis 
+                allowDataOverflow
                 yAxisId="left" 
                 orientation="left" 
                 stroke="hsl(var(--foreground))" 
                 domain={zoomDomain ? zoomDomain.yLeft : ['auto', 'auto']} 
-                allowDataOverflow
             />
             <YAxis 
+                allowDataOverflow
                 yAxisId="right" 
                 orientation="right" 
                 stroke="hsl(var(--foreground))" 
                 domain={zoomDomain ? zoomDomain.yRight : ['auto', 'auto']}
-                allowDataOverflow
             />
             
             <Tooltip content={<CustomTooltipContent />} />
@@ -337,8 +348,13 @@ export function ChartDisplay({
               />
             ))}
 
-            {x1 && x2 ? (
-                <ReferenceArea x1={x1} x2={x2} strokeOpacity={0.3} yAxisId="left"/>
+            {refAreaLeft && refAreaRight ? (
+                <ReferenceArea 
+                    yAxisId="left" 
+                    x1={refAreaLeft} 
+                    x2={refAreaRight} 
+                    strokeOpacity={0.3} 
+                />
             ) : null}
 
           </LineChart>
