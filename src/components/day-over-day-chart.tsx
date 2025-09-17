@@ -19,7 +19,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from './ui/label';
 import type { DataPoint } from '@/lib/types';
 import { useState } from 'react';
-import { formatInTimeZone } from 'date-fns-tz';
 
 type DayOverDayChartProps = {
   dataHistory: DataPoint[];
@@ -86,7 +85,7 @@ const MedianLine = (props: any) => {
 
     if (medianY < y || medianY > y + height) return null;
 
-    return <line x1={x} y1={medianY} x2={x + width} y2={medianY} stroke="hsl(var(--destructive))" strokeWidth={2} />;
+    return <line x1={x} y1={medianY} x2={x + width} stroke="hsl(var(--destructive))" strokeWidth={2} />;
 };
 
 
