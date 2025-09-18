@@ -319,7 +319,7 @@ export default function Home() {
                             <CardDescription>
                                 Average values from {brushData.startDate} to {brushData.endDate}.
                             </CardDescription>
-                        </Header>
+                        </CardHeader>
                         <CardContent>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                 {Object.entries(brushData.stats).map(([metric, data]) => (
@@ -357,3 +357,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
