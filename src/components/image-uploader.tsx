@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
+import { useState, useRef, useTransition, useCallback } from 'react';
 import Image from 'next/image';
 import { Upload, X, Loader2, Trash2, Download, UploadCloud, AlertCircle, CheckCircle, RefreshCw, Clock, Check, ShieldCheck, Copy } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -497,3 +497,5 @@ export function ImageUploader({
     </>
   );
 }
+
+    

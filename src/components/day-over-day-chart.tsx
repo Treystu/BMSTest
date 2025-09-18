@@ -206,3 +206,5 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
     </Card>
   );
 }
+
+    
