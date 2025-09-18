@@ -131,8 +131,8 @@ export function ChartDisplay({
     return { leftMetrics: left, rightMetrics: right, allMetrics: all };
   }, [selectedMetrics]);
 
-  const { processedData, timeFilteredData, visibleRange } = useMemo(() => {
-    if (!data || data.length === 0) return { processedData: [], timeFilteredData: [], visibleRange: 0 };
+  const { timeFilteredData, visibleRange } = useMemo(() => {
+    if (!data || data.length === 0) return { timeFilteredData: [], visibleRange: 0 };
     
     const now = Date.now();
     // Data is guaranteed to be sorted by page.tsx, so we just filter.
@@ -146,31 +146,14 @@ export function ChartDisplay({
         }
     });
 
-    if (filtered.length === 0) return { processedData: [], timeFilteredData: [], visibleRange: 0 };
-
-    const dataWithGaps: (DataPoint | { timestamp: number, isGap: boolean, [key:string]: any })[] = [];
-    const twoHours = 2 * 60 * 60 * 1000;
-
-    for (let i = 0; i < filtered.length; i++) {
-        dataWithGaps.push(filtered[i]);
-        if (i < filtered.length - 1) {
-            const diff = filtered[i+1].timestamp - filtered[i].timestamp;
-            if (diff > twoHours) {
-                const nullPoint: any = { timestamp: filtered[i].timestamp + twoHours/2, isGap: true };
-                allMetrics.forEach(m => {
-                  nullPoint[m] = null
-                });
-                dataWithGaps.push(nullPoint);
-            }
-        }
-    }
+    if (filtered.length === 0) return { timeFilteredData: [], visibleRange: 0 };
     
     const first = filtered[0]?.timestamp || 0;
     const last = filtered[filtered.length - 1]?.timestamp || 0;
     
-    return { processedData: dataWithGaps, timeFilteredData: filtered, visibleRange: last - first };
+    return { timeFilteredData: filtered, visibleRange: last - first };
 
-  }, [data, dateRange, allMetrics]);
+  }, [data, dateRange]);
   
   const handleMouseDown = (e: any) => {
     if (!e || !e.activeLabel) return;
@@ -227,7 +210,7 @@ export function ChartDisplay({
     );
   }
 
-  if (!batteryId || processedData.length < 2) {
+  if (!batteryId || timeFilteredData.length < 2) {
     return (
         <Card>
             <CardHeader>
@@ -261,7 +244,7 @@ export function ChartDisplay({
       <CardContent>
         <ResponsiveContainer width="100%" height={450}>
           <LineChart 
-            data={processedData} 
+            data={timeFilteredData} 
             margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -304,7 +287,7 @@ export function ChartDisplay({
                 stroke={getLineColor(metric)}
                 dot={false}
                 strokeWidth={2}
-                connectNulls={false}
+                connectNulls={true}
                 isAnimationActive={!zoomDomain}
               />
             ))}
@@ -318,7 +301,7 @@ export function ChartDisplay({
                 stroke={getLineColor(metric)}
                 dot={false}
                 strokeWidth={2}
-                connectNulls={false}
+                connectNulls={true}
                 isAnimationActive={!zoomDomain}
               />
             ))}
@@ -350,7 +333,7 @@ export function ChartDisplay({
                       dataKey={metric}
                       stroke={getLineColor(metric)}
                       dot={false}
-                      connectNulls={false}
+                      connectNulls={true}
                       yAxisId={leftAxisMetricSet.has(metric) ? 'left' : 'right'}
                     />
                   ))}
@@ -364,5 +347,3 @@ export function ChartDisplay({
     </Card>
   );
 }
-
-    

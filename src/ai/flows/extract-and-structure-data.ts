@@ -50,7 +50,7 @@ Extract their full numerical values. Do not extract deltas or other differences 
 
 Then, extract any other metrics you can find.
 
-Finally, structure all extracted metrics into a valid JSON object. You MUST ensure that every key-value pair is correctly formatted. For example, instead of "MOS: 20°C", you must write "MOS": "20°C".
+Finally, structure all extracted metrics into a valid JSON object. Before you finish, you MUST perform a final check on the JSON. If any of the four core metrics ('SOC', 'Voltage', 'Current', 'Capacity') are missing from your extracted data, you MUST add them to the JSON with a value of 'null'. This is to ensure the final JSON structure is always consistent.
 
 Image: {{media url=photoDataUri}}
 
