@@ -5,7 +5,6 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap } from "@/lib/types";
 import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
-import { DataDisplay } from "@/components/data-display";
 import { ChartControls } from "@/components/chart-controls";
 import { ChartDisplay, type BrushRange } from "@/components/chart-display";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { formatInTimeZone } from 'date-fns-tz';
 import { DayOverDayChart } from "@/components/day-over-day-chart";
+import { motion, AnimatePresence } from 'framer-motion';
 
 const initialMetrics: SelectedMetrics = {
   soc: true,
@@ -80,6 +80,7 @@ export default function Home() {
   const { toast } = useToast();
 
   const batteryIds = useMemo(() => Object.keys(dataByBattery), [dataByBattery]);
+  const hasData = batteryIds.length > 0;
 
   useEffect(() => {
     if (batteryIds.length > 0 && !activeBatteryId) {
@@ -199,14 +200,6 @@ export default function Home() {
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
   const chartInfo = activeBatteryData?.chartInfo || null;
-
-  const latestDataPoint = useMemo(() => {
-    if (dataHistory.length > 0) {
-      // Since dataHistory is guaranteed to be sorted, the last item is the latest
-      return dataHistory[dataHistory.length - 1];
-    }
-    return null;
-  }, [dataHistory]);
   
   const availableMetrics = useMemo(() => {
     const allMetrics = new Set<string>();
@@ -269,93 +262,112 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-background">
       <Header />
       <main className="flex-1 container mx-auto p-4 md:p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 flex flex-col gap-6">
-            <ImageUploader 
-              onNewDataPoint={handleNewDataPoint}
-              onMultipleDataPoints={handleMultipleDataPoints}
-              setIsLoading={setIsLoading}
-              isLoading={isLoading}
-              dataByBattery={dataByBattery}
-              processedFileNames={processedFileNames}
-            />
-            <DataDisplay data={latestDataPoint} />
-          </div>
-          <div className="lg:col-span-2 flex flex-col gap-6">
-            {batteryIds.length > 0 && (
-                <Card>
-                    <CardHeader className="p-4">
-                        <CardTitle className="text-lg">Select Battery</CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-4 pt-0">
-                        <Tabs value={activeBatteryId || ""} onValueChange={setActiveBatteryId}>
-                            <TabsList>
-                                {batteryIds.map(id => (
-                                    <TabsTrigger key={id} value={id}>{id}</TabsTrigger>
-                                ))}
-                            </TabsList>
-                        </Tabs>
-                    </CardContent>
-                </Card>
-            )}
-            
-            <div className="space-y-6">
-                <ChartControls
-                availableMetrics={availableMetrics}
-                selectedMetrics={selectedMetrics}
-                setSelectedMetrics={setSelectedMetrics}
-                dateRange={dateRange}
-                setDateRange={setDateRange}
-                hasData={dataHistory.length > 0}
-                chartMode={chartMode}
-                setChartMode={setChartMode}
-                />
-                {chartMode === 'trend' ? (
-                <>
-                    {brushData && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Selected Range Analysis</CardTitle>
-                            <CardDescription>
-                                Average values from {brushData.startDate} to {brushData.endDate}.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                {Object.entries(brushData.stats).map(([metric, data]) => (
-                                data.count > 0 && (
-                                    <div key={metric}>
-                                        <p className="font-semibold capitalize">{metric.replace(/_/g, ' ')}</p>
-                                        <p className="text-muted-foreground">{data.average.toFixed(3)}</p>
-                                    </div>
-                                )
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-                    )}
-                    <ChartDisplay
-                    batteryId={activeBatteryId || ""}
-                    data={dataHistory}
-                    selectedMetrics={selectedMetrics}
-                    dateRange={dateRange}
-                    chartInfo={chartInfo}
-                    isLoading={isLoading && dataHistory.length === 0}
-                    onBrushChange={handleBrushChange}
-                    />
-                </>
-                ) : (
-                    <DayOverDayChart 
-                        dataHistory={dataHistory} 
-                        availableMetrics={availableMetrics} 
-                    />
-                )}
+        <AnimatePresence>
+          {!hasData && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-2xl mx-auto"
+            >
+              <ImageUploader 
+                onNewDataPoint={handleNewDataPoint}
+                onMultipleDataPoints={handleMultipleDataPoints}
+                setIsLoading={setIsLoading}
+                isLoading={isLoading}
+                dataByBattery={dataByBattery}
+                processedFileNames={processedFileNames}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
+        {hasData && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1 flex flex-col gap-6">
+              <ImageUploader 
+                onNewDataPoint={handleNewDataPoint}
+                onMultipleDataPoints={handleMultipleDataPoints}
+                setIsLoading={setIsLoading}
+                isLoading={isLoading}
+                dataByBattery={dataByBattery}
+                processedFileNames={processedFileNames}
+              />
+            </div>
+            <div className="lg:col-span-2 flex flex-col gap-6">
+              {batteryIds.length > 0 && (
+                  <Card>
+                      <CardHeader className="p-4">
+                          <CardTitle className="text-lg">Select Battery</CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-4 pt-0">
+                          <Tabs value={activeBatteryId || ""} onValueChange={setActiveBatteryId}>
+                              <TabsList>
+                                  {batteryIds.map(id => (
+                                      <TabsTrigger key={id} value={id}>{id}</TabsTrigger>
+                                  ))}
+                              </TabsList>
+                          </Tabs>
+                      </CardContent>
+                  </Card>
+              )}
+              
+              <div className="space-y-6">
+                  <ChartControls
+                  availableMetrics={availableMetrics}
+                  selectedMetrics={selectedMetrics}
+                  setSelectedMetrics={setSelectedMetrics}
+                  dateRange={dateRange}
+                  setDateRange={setDateRange}
+                  hasData={dataHistory.length > 0}
+                  chartMode={chartMode}
+                  setChartMode={setChartMode}
+                  />
+                  {chartMode === 'trend' ? (
+                  <>
+                      {brushData && (
+                      <Card>
+                          <CardHeader>
+                              <CardTitle>Selected Range Analysis</CardTitle>
+                              <CardDescription>
+                                  Average values from {brushData.startDate} to {brushData.endDate}.
+                              </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                  {Object.entries(brushData.stats).map(([metric, data]) => (
+                                  data.count > 0 && (
+                                      <div key={metric}>
+                                          <p className="font-semibold capitalize">{metric.replace(/_/g, ' ')}</p>
+                                          <p className="text-muted-foreground">{data.average.toFixed(3)}</p>
+                                      </div>
+                                  )
+                                  ))}
+                              </div>
+                          </CardContent>
+                      </Card>
+                      )}
+                      <ChartDisplay
+                      batteryId={activeBatteryId || ""}
+                      data={dataHistory}
+                      selectedMetrics={selectedMetrics}
+                      dateRange={dateRange}
+                      chartInfo={chartInfo}
+                      isLoading={isLoading && dataHistory.length === 0}
+                      onBrushChange={handleBrushChange}
+                      />
+                  </>
+                  ) : (
+                      <DayOverDayChart 
+                          dataHistory={dataHistory} 
+                          availableMetrics={availableMetrics} 
+                      />
+                  )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   );
 }
-
-    

@@ -364,7 +364,7 @@ export function ImageUploader({
     <>
     <Card>
       <CardHeader>
-        <CardTitle>1. Upload Data</CardTitle>
+        <CardTitle>Upload Data</CardTitle>
         <CardDescription>Upload images/ZIP to extract data, or upload a previously saved JSON data file.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
