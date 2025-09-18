@@ -29,7 +29,7 @@ const sanitizeMetricKey = (key: string): string => {
     if (lowerKey === 'voltage') return 'voltage';
     if (lowerKey === 'current') return 'current';
     if (lowerKey.includes('remainingcapacity') || lowerKey.includes('capacity') || lowerKey.includes('cap')) return 'capacity';
-    if (lowerKey.includes('temp')) return 'temperature';
+    if (lowerKey.includes('temp') && !lowerKey.includes('num')) return 'temperature';
 
     return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
 };
@@ -77,11 +77,14 @@ const parseNumericValue = (value: any): number | null => {
     const match = value.match(/-?\d+(\.\d+)?/);
     if (match) {
         const parsed = parseFloat(match[0]);
-        // Let's treat a standalone "1" as a potential parsing error, especially if units were present.
-        // If the original string was just "1", it's probably fine. Otherwise, it's suspect.
+        // If the parsed number is 1, but the original string was more than just "1", it's likely a count or a parsing artifact.
+        // For example, "1 sensor" or "1%" when we just want the value. We discard these.
         if (parsed === 1 && value.trim() !== "1") {
-           // This logic can be made more sophisticated. For now, we accept it but this is where you could flag it.
-           // For instance, you could return null here if you want to discard all "1"s that had extra text.
+           return null;
+        }
+        // Same logic for 0
+        if (parsed === 0 && value.trim() !== "0") {
+            return null;
         }
         return parsed;
     }
@@ -128,6 +131,8 @@ export default function Home() {
                     const value = parseNumericValue(obj[key]);
                     if(value !== null) {
                         const sanitizedKey = sanitizeMetricKey(newKey);
+                        // Don't overwrite an existing temperature if we've already found one
+                        if (sanitizedKey === 'temperature' && dataPoint.temperature !== undefined) continue;
                         dataPoint[sanitizedKey] = value;
                     }
                 }
@@ -403,5 +408,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
