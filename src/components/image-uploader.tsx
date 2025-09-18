@@ -308,7 +308,7 @@ export function ImageUploader({
                                         const parsedData = JSON.parse(result.data.extractedData);
                                         const extractedKeys = Object.keys(parsedData).map(k => k.toLowerCase());
                                         coreMetrics.forEach(coreMetric => {
-                                            verifiedMetrics[coreMetric] = extractedKeys.some(ek => ek.includes(coreMetric));
+                                            verifiedMetrics[coreMetric] = extractedKeys.some(ek => ek.includes(coreMetric) && parsedData[ek] !== null);
                                         });
                                     } catch {
                                         coreMetrics.forEach(coreMetric => { verifiedMetrics[coreMetric] = false; });
@@ -358,7 +358,7 @@ export function ImageUploader({
 
 
   const hasFailedUploads = imageFiles.some(f => f.status === 'error');
-  const hasProcessedFiles = imageFiles.some(f => f.status !== 'queued');
+  const hasProcessedFiles = imageFiles.some(f => f.status !== 'queued' && f.status !== 'processing');
 
   return (
     <>

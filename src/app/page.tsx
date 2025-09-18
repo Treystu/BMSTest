@@ -68,6 +68,26 @@ export function mergeAndSortHistory<T extends { timestamp: number }>(existing: T
     return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
 }
 
+// A more robust parser that extracts the first valid number from a string.
+const parseNumericValue = (value: any): number | null => {
+    if (typeof value === 'number') return value;
+    if (typeof value !== 'string') return null;
+    
+    // This regex looks for an optional negative sign, followed by digits, an optional decimal point, and more digits.
+    const match = value.match(/-?\d+(\.\d+)?/);
+    if (match) {
+        const parsed = parseFloat(match[0]);
+        // Let's treat a standalone "1" as a potential parsing error, especially if units were present.
+        // If the original string was just "1", it's probably fine. Otherwise, it's suspect.
+        if (parsed === 1 && value.trim() !== "1") {
+           // This logic can be made more sophisticated. For now, we accept it but this is where you could flag it.
+           // For instance, you could return null here if you want to discard all "1"s that had extra text.
+        }
+        return parsed;
+    }
+    return null;
+}
+
 export default function Home() {
   const [dataByBattery, setDataByBattery] = useState<BatteryDataMap>({});
   const [processedFileNames, setProcessedFileNames] = useState<Set<string>>(new Set());
@@ -105,8 +125,8 @@ export default function Home() {
                 if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
                     processObject(obj[key], newKey);
                 } else {
-                    const value = parseFloat(obj[key]);
-                    if(!isNaN(value)) {
+                    const value = parseNumericValue(obj[key]);
+                    if(value !== null) {
                         const sanitizedKey = sanitizeMetricKey(newKey);
                         dataPoint[sanitizedKey] = value;
                     }
