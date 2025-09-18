@@ -22,6 +22,7 @@ const initialMetrics: SelectedMetrics = {
   temperature: true,
 };
 
+// Stricter key sanitization to prevent misinterpretation of status fields.
 const sanitizeMetricKey = (key: string): string => {
     const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/gi, '');
 
@@ -29,8 +30,12 @@ const sanitizeMetricKey = (key: string): string => {
     if (lowerKey === 'voltage') return 'voltage';
     if (lowerKey === 'current') return 'current';
     if (lowerKey === 'capacity' || lowerKey === 'remainingcapacity') return 'capacity';
-    if (lowerKey.includes('temp') && !lowerKey.includes('num')) return 'temperature';
+    // Only match temperature fields, ignore fields that count temperature sensors.
+    if (lowerKey.includes('temp') && !lowerKey.includes('num') && !lowerKey.includes('count')) return 'temperature';
+    if (lowerKey.startsWith('t') && !isNaN(parseInt(lowerKey.substring(1),10))) return 'temperature'; // Handles T1, T2 etc.
+    if (lowerKey === 'mos') return 'temperature'; // Treat MOS temp as a temperature reading
 
+    // Return a sanitized version for other potential metrics, but core metrics are handled above.
     return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
 };
 
@@ -70,18 +75,24 @@ export function mergeAndSortHistory<T extends { timestamp: number }>(existing: T
 }
 
 // A more robust parser that extracts the first valid number from a string.
+// It also rejects ambiguous '1' or '0' values that likely come from status fields.
 const parseNumericValue = (value: any): number | null => {
     if (typeof value === 'number') return value;
     if (typeof value !== 'string') return null;
     
-    const match = value.match(/-?\d+(\.\d+)?/);
+    const trimmedValue = value.trim();
+    // Attempt to match a floating point or integer number, possibly negative.
+    const match = trimmedValue.match(/-?\d+(\.\d+)?/);
+    
     if (match) {
         const parsed = parseFloat(match[0]);
-        if (parsed === 1 && value.trim() !== "1") {
-           return null;
-        }
-        if (parsed === 0 && value.trim() !== "0") {
-            return null;
+        
+        // If the parsed number is 1 or 0, check if the original string was *just* "1" or "0".
+        // This prevents interpreting "Status: 1" or "1 sensor" as a value of 1.
+        if ((parsed === 1 || parsed === 0)) {
+            if (trimmedValue !== "1" && trimmedValue !== "0" && match[0] === trimmedValue) {
+                return null;
+            }
         }
         return parsed;
     }
@@ -119,20 +130,23 @@ export default function Home() {
 
         const processObject = (obj: any, prefix = '') => {
             for (const key in obj) {
-                if (key.toLowerCase() === 'timestamp') continue;
-                
-                const newKey = prefix ? `${prefix}_${key}` : key;
-                if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
-                    processObject(obj[key], newKey);
-                } else {
-                    const sanitizedKey = sanitizeMetricKey(newKey);
-                    // Only parse if the sanitized key is one of our core metrics OR it's not a known status key
-                    const isStatusKey = newKey.toLowerCase().includes('status');
+                if (obj.hasOwnProperty(key)) {
+                    if (key.toLowerCase() === 'timestamp') continue;
                     
-                    if (Object.keys(initialMetrics).includes(sanitizedKey) || !isStatusKey) {
+                    const newKey = prefix ? `${prefix}_${key}` : key;
+                    if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                        processObject(obj[key], newKey);
+                    } else {
+                        const sanitizedKey = sanitizeMetricKey(newKey);
                         const value = parseNumericValue(obj[key]);
-                        if(value !== null) {
-                            if (sanitizedKey === 'temperature' && dataPoint.temperature !== undefined) continue;
+                        
+                        // Only add the metric if it sanitized to a known core metric or another valid key,
+                        // and the value is a valid number.
+                        if (sanitizedKey && value !== null) {
+                            // Special rule for temperature: don't overwrite if we already found one
+                            if (sanitizedKey === 'temperature' && dataPoint.temperature !== undefined) {
+                                continue;
+                            }
                             dataPoint[sanitizedKey] = value;
                         }
                     }
@@ -405,3 +419,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
