@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea, Brush
 } from 'recharts';
 
-export type BrushRange = {
+export type VisibleRange = {
   startIndex?: number;
   endIndex?: number;
 };
@@ -24,7 +24,7 @@ type ChartDisplayProps = {
   dateRange: string;
   chartInfo: ChartInfo | null;
   isLoading: boolean;
-  onBrushChange: (range: BrushRange | null) => void;
+  onVisibleRangeChange: (range: VisibleRange | null, isZoomed: boolean) => void;
 };
 
 type ZoomState = {
@@ -76,11 +76,6 @@ const getFormattedTimestamp = (ts: number, rangeInMs: number) => {
 
 const CustomTooltipContent = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-        const point = payload[0].payload;
-        if(point.isGap){
-          return null;
-        }
-
         return (
             <div className="p-3 bg-background border rounded-lg shadow-xl text-sm space-y-2">
                 <p className="font-bold">{formatInTimeZone(new Date(label), 'UTC', "MMM d, yyyy, h:mm:ss a")}</p>
@@ -106,7 +101,7 @@ export function ChartDisplay({
   dateRange,
   chartInfo,
   isLoading,
-  onBrushChange
+  onVisibleRangeChange
 }: ChartDisplayProps) {
 
   const [zoomState, setZoomState] = useState<ZoomState>({ refAreaLeft: '', refAreaRight: '' });
@@ -154,6 +149,11 @@ export function ChartDisplay({
     return { timeFilteredData: filtered, visibleRange: last - first };
 
   }, [data, dateRange]);
+
+  useEffect(() => {
+      // Reset zoom when data or date range changes
+      resetZoom();
+  }, [timeFilteredData, dateRange]);
   
   const handleMouseDown = (e: any) => {
     if (!e || !e.activeLabel) return;
@@ -166,34 +166,57 @@ export function ChartDisplay({
     }
   };
 
-  const handleMouseUp = (e: any) => {
+  const handleMouseUp = () => {
     const { refAreaLeft, refAreaRight } = zoomState;
     if (refAreaLeft && refAreaRight && refAreaLeft !== refAreaRight) {
-        
-      const newDomainX: [number, number] = [
-          Math.min(Number(refAreaLeft), Number(refAreaRight)), 
-          Math.max(Number(refAreaLeft), Number(refAreaRight))
-      ];
+      const [from, to] = [refAreaLeft, refAreaRight].sort((a,b) => Number(a)-Number(b));
+      
+      const newDomainX: [number, number] = [Number(from), Number(to)];
+      
+      const dataInZoom = timeFilteredData.filter(d => d.timestamp >= newDomainX[0] && d.timestamp <= newDomainX[1]);
 
-      // A simple zoom on X-axis only for now to ensure stability
+      const getPaddedDomain = (metrics: string[]): [number, number] => {
+          let min = Infinity;
+          let max = -Infinity;
+          
+          dataInZoom.forEach(dp => {
+              metrics.forEach(metric => {
+                  const val = dp[metric];
+                  if (typeof val === 'number') {
+                      if (val < min) min = val;
+                      if (val > max) max = val;
+                  }
+              });
+          });
+
+          if (min === Infinity || max === -Infinity) return ['auto', 'auto'];
+
+          const diff = max - min;
+          const padding = diff * 0.1; // 10% padding
+          
+          return [min - padding, max + padding];
+      };
+
+      const yLeftDomain = getPaddedDomain(leftMetrics);
+      const yRightDomain = getPaddedDomain(rightMetrics);
+      
       setZoomDomain({ 
-          x: newDomainX, 
-          yLeft: ['auto', 'auto'],
-          yRight: ['auto', 'auto']
+          x: newDomainX,
+          yLeft: yLeftDomain,
+          yRight: yRightDomain,
       });
+
+      const startIndex = timeFilteredData.findIndex(d => d.timestamp >= newDomainX[0]);
+      const endIndex = timeFilteredData.findLastIndex(d => d.timestamp <= newDomainX[1]);
+      onVisibleRangeChange({ startIndex, endIndex }, true);
     }
     setZoomState({ refAreaLeft: '', refAreaRight: '' });
   };
   
-  const resetZoom = () => {
+  const resetZoom = useCallback(() => {
     setZoomDomain(null);
-  };
-  
-  const handleBrushChangeCallback = useCallback((range: any) => {
-    if (range) {
-        onBrushChange({ startIndex: range.startIndex, endIndex: range.endIndex });
-    }
-  }, [onBrushChange]);
+    onVisibleRangeChange(null, false);
+  }, [onVisibleRangeChange]);
 
 
   if (isLoading && data.length === 0) {
@@ -266,6 +289,7 @@ export function ChartDisplay({
                 orientation="left" 
                 stroke="hsl(var(--foreground))" 
                 domain={zoomDomain ? zoomDomain.yLeft : ['auto', 'auto']} 
+                width={80}
             />}
             {rightMetrics.length > 0 && <YAxis 
                 allowDataOverflow
@@ -273,6 +297,7 @@ export function ChartDisplay({
                 orientation="right" 
                 stroke="hsl(var(--foreground))" 
                 domain={zoomDomain ? zoomDomain.yRight : ['auto', 'auto']}
+                width={80}
             />}
             
             <Tooltip content={<CustomTooltipContent />} />
@@ -320,7 +345,6 @@ export function ChartDisplay({
               height={30} 
               stroke="hsl(var(--primary))"
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
-              onChange={handleBrushChangeCallback}
               data={timeFilteredData}
               startIndex={Math.max(timeFilteredData.length - 100, 0)}
               endIndex={timeFilteredData.length - 1}
@@ -347,3 +371,5 @@ export function ChartDisplay({
     </Card>
   );
 }
+
+    

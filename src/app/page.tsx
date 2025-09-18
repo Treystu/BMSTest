@@ -6,7 +6,7 @@ import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDa
 import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
 import { ChartControls } from "@/components/chart-controls";
-import { ChartDisplay, type BrushRange } from "@/components/chart-display";
+import { ChartDisplay, type VisibleRange } from "@/components/chart-display";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
@@ -75,7 +75,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState<SelectedMetrics>(initialMetrics);
   const [dateRange, setDateRange] = useState<string>("all");
-  const [brushRange, setBrushRange] = useState<BrushRange | null>(null);
+  const [visibleRange, setVisibleRange] = useState<VisibleRange | null>(null);
+  const [isZoomed, setIsZoomed] = useState(false);
   const [chartMode, setChartMode] = useState<'trend' | 'day-over-day'>('trend');
   const { toast } = useToast();
 
@@ -217,10 +218,10 @@ export default function Home() {
     return Array.from(allMetrics);
   }, [dataHistory]);
 
-  const brushData = useMemo(() => {
-    if (!brushRange || brushRange.startIndex === undefined || brushRange.endIndex === undefined || !activeBatteryId) return null;
+  const rangeAnalysisData = useMemo(() => {
+    if (!isZoomed || !visibleRange || visibleRange.startIndex === undefined || visibleRange.endIndex === undefined || !activeBatteryId) return null;
 
-    const slicedData = dataHistory.slice(brushRange.startIndex, brushRange.endIndex + 1);
+    const slicedData = dataHistory.slice(visibleRange.startIndex, visibleRange.endIndex + 1);
     
     if (slicedData.length === 0) return null;
 
@@ -252,10 +253,11 @@ export default function Home() {
         endDate: getFormattedDate(slicedData[slicedData.length - 1].timestamp, "MMM d, yyyy, h:mm:ss a"),
         stats
     };
-  }, [brushRange, dataHistory, selectedMetrics, activeBatteryId]);
+  }, [isZoomed, visibleRange, dataHistory, selectedMetrics, activeBatteryId]);
 
-  const handleBrushChange = useCallback((range: BrushRange | null) => {
-    setBrushRange(range);
+  const handleVisibleRangeChange = useCallback((range: VisibleRange | null, zoomed: boolean) => {
+    setVisibleRange(range);
+    setIsZoomed(zoomed);
   }, []);
     
   return (
@@ -284,7 +286,12 @@ export default function Home() {
         
         {hasData && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 flex flex-col gap-6">
+            <motion.div 
+              className="lg:col-span-1 flex flex-col gap-6"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+            >
               <ImageUploader 
                 onNewDataPoint={handleNewDataPoint}
                 onMultipleDataPoints={handleMultipleDataPoints}
@@ -293,8 +300,13 @@ export default function Home() {
                 dataByBattery={dataByBattery}
                 processedFileNames={processedFileNames}
               />
-            </div>
-            <div className="lg:col-span-2 flex flex-col gap-6">
+            </motion.div>
+            <motion.div 
+              className="lg:col-span-2 flex flex-col gap-6"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+            >
               {batteryIds.length > 0 && (
                   <Card>
                       <CardHeader className="p-4">
@@ -325,17 +337,17 @@ export default function Home() {
                   />
                   {chartMode === 'trend' ? (
                   <>
-                      {brushData && (
+                      {rangeAnalysisData && (
                       <Card>
                           <CardHeader>
                               <CardTitle>Selected Range Analysis</CardTitle>
                               <CardDescription>
-                                  Average values from {brushData.startDate} to {brushData.endDate}.
+                                  Average values from {rangeAnalysisData.startDate} to {rangeAnalysisData.endDate}.
                               </CardDescription>
                           </CardHeader>
                           <CardContent>
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                  {Object.entries(brushData.stats).map(([metric, data]) => (
+                                  {Object.entries(rangeAnalysisData.stats).map(([metric, data]) => (
                                   data.count > 0 && (
                                       <div key={metric}>
                                           <p className="font-semibold capitalize">{metric.replace(/_/g, ' ')}</p>
@@ -354,7 +366,7 @@ export default function Home() {
                       dateRange={dateRange}
                       chartInfo={chartInfo}
                       isLoading={isLoading && dataHistory.length === 0}
-                      onBrushChange={handleBrushChange}
+                      onVisibleRangeChange={handleVisibleRangeChange}
                       />
                   </>
                   ) : (
@@ -364,10 +376,12 @@ export default function Home() {
                       />
                   )}
               </div>
-            </div>
+            </motion.div>
           </div>
         )}
       </main>
     </div>
   );
 }
+
+    
