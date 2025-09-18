@@ -34,8 +34,8 @@ type ZoomState = {
 
 type ZoomDomain = {
   x: [number, number];
-  yLeft: [number, number];
-  yRight: [number, number];
+  yLeft: [any, any];
+  yRight: [any, any];
 };
 
 const lineColors: { [key: string]: string } = {
@@ -129,15 +129,16 @@ export function ChartDisplay({
   const { timeFilteredData, visibleRange } = useMemo(() => {
     if (!data || data.length === 0) return { timeFilteredData: [], visibleRange: 0 };
     
-    const now = Date.now();
-    // Data is guaranteed to be sorted by page.tsx, so we just filter.
+    const lastDataPointTime = data[data.length - 1]?.timestamp;
+    if (!lastDataPointTime) return { timeFilteredData: [], visibleRange: 0 };
+
     const filtered = data.filter(d => {
         if (d.timestamp === null || d.timestamp === undefined) return false;
         switch (dateRange) {
-            case '1d': return d.timestamp >= subDays(now, 1).getTime();
-            case '1w': return d.timestamp >= subWeeks(now, 1).getTime();
-            case '1m': return d.timestamp >= subMonths(now, 1).getTime();
-            default: return true;
+            case '1d': return d.timestamp >= subDays(lastDataPointTime, 1).getTime();
+            case '1w': return d.timestamp >= subWeeks(lastDataPointTime, 7).getTime();
+            case '1m': return d.timestamp >= subMonths(lastDataPointTime, 1).getTime();
+            default: return true; // 'all'
         }
     });
 
@@ -192,7 +193,7 @@ export function ChartDisplay({
           if (min === Infinity || max === -Infinity) return ['auto', 'auto'];
 
           const diff = max - min;
-          const padding = diff * 0.1; // 10% padding
+          const padding = diff === 0 ? 0.5 : diff * 0.1; // Add padding
           
           return [min - padding, max + padding];
       };
@@ -346,8 +347,6 @@ export function ChartDisplay({
               stroke="hsl(var(--primary))"
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
               data={timeFilteredData}
-              startIndex={Math.max(timeFilteredData.length - 100, 0)}
-              endIndex={timeFilteredData.length - 1}
             >
                 <LineChart>
                   {allMetrics.map((metric) => (
@@ -371,5 +370,3 @@ export function ChartDisplay({
     </Card>
   );
 }
-
-    
