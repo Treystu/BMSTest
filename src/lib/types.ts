@@ -50,6 +50,8 @@ export type TimeSensitiveInfo = {
   voltageDifferenceOk: boolean;
   solarChargingEstimate: number | null;
   generatorSuggestion: string | null;
+  estimatedRuntimeHours: number | null;
+  remainingCapacity: number | null;
 };
 
 export type StateAnalysis = {

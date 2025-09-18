@@ -47,6 +47,8 @@ export const analyzeCurrentStateFlow = ai.defineFlow(
       voltageDifferenceOk: true,
       solarChargingEstimate: null,
       generatorSuggestion: null,
+      estimatedRuntimeHours: null,
+      remainingCapacity: null,
     };
 
     let requiresAttention = false;
@@ -58,22 +60,44 @@ export const analyzeCurrentStateFlow = ai.defineFlow(
       requiresAttention = true;
     }
 
-    // 2. Time-of-day awareness
+    // 2. Battery Runtime Estimation
+    const { capacity, current, soc } = latestDataPoint;
+
+    if (typeof capacity === 'number' && capacity > 0) {
+      info.remainingCapacity = capacity;
+
+      // Check if battery is discharging at a significant rate
+      if (typeof current === 'number' && current < -0.1) {
+        const rawHours = capacity / -current;
+        info.estimatedRuntimeHours = rawHours;
+
+        const hours = Math.floor(rawHours);
+        const minutes = Math.round((rawHours - hours) * 60);
+        
+        info.recommendation += `With the current load, the battery is estimated to last for ${hours}h ${minutes}m. `;
+      } else if (typeof current === 'number' && current >= 0) {
+        // A value of -1 can be used to indicate 'Charging' in the UI
+        info.estimatedRuntimeHours = -1; 
+        info.recommendation += `The battery is currently charging or idle. `;
+      }
+    }
+
+    // 3. Time-of-day awareness
     if (isDaylight(latestDataPoint.timestamp)) {
       // Daylight hours: Account for solar charging
       if (isSunny()) {
         info.solarChargingEstimate = 65; // Sunny: 60-70 amps
-        info.recommendation += `It\'s sunny. Expect solar charging of around 60-70 amps. `;
+        info.recommendation += `It\'s sunny, expect solar charging of around 60-70 amps. `;
       } else {
         info.solarChargingEstimate = 20; // Cloudy: ~20 amps
-        info.recommendation += `It\'s cloudy. Expect solar charging of around 20 amps. `;
+        info.recommendation += `It\'s cloudy, expect solar charging of around 20 amps. `;
       }
     } else {
       // Night time: Check for low battery and suggest generator
-      if (latestDataPoint.soc < 30) { // Assuming SOC < 30% is low battery
+      if (typeof soc === 'number' && soc < 30) { // Assuming SOC < 30% is low battery
         requiresAttention = true;
         info.recommendation += `Low battery detected at night. Consider starting the generator. `;
-        if (latestDataPoint.soc < 15) { // Critically low
+        if (soc < 15) { // Critically low
           info.generatorSuggestion = 'Battery is critically low. Recommend running both chargers at 2000w for faster charging.';
         } else {
           info.generatorSuggestion = 'Recommend running one charger at 1000w with eco-mode for efficiency.';
@@ -81,7 +105,7 @@ export const analyzeCurrentStateFlow = ai.defineFlow(
       }
     }
 
-    // 3. Summarize recommendations
+    // 4. Summarize recommendations
     if (!requiresAttention && info.recommendation === '') {
       info.recommendation = 'System operating within normal parameters.';
     }
