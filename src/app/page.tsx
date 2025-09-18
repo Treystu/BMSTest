@@ -87,13 +87,12 @@ const parseNumericValue = (value: any): number | null => {
     if (match) {
         const parsed = parseFloat(match[0]);
         
-        // If the parsed number is 1 or 0, check if the original string was *just* "1" or "0".
-        // This prevents interpreting "Status: 1" or "1 sensor" as a value of 1.
-        if ((parsed === 1 || parsed === 0)) {
-            if (trimmedValue !== "1" && trimmedValue !== "0" && match[0] === trimmedValue) {
-                return null;
-            }
+        // Critical check: if the parsed number is 1 or 0, it is only valid if the original string
+        // was *exactly* "1" or "0". This prevents interpreting "Status: 1" or "1%" as a value of 1.
+        if ((parsed === 1 && trimmedValue !== '1') || (parsed === 0 && trimmedValue !== '0')) {
+          return null;
         }
+
         return parsed;
     }
     return null;
