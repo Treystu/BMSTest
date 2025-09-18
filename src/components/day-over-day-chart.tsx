@@ -100,10 +100,11 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
     const hourlyBuckets: { [hour: number]: number[] } = Array.from({ length: 24 }, () => []);
 
     dataHistory.forEach((dp) => {
-      if (dp[selectedMetric] !== undefined && dp[selectedMetric] !== null) {
+      const metricValue = dp[selectedMetric];
+      if (metricValue !== undefined && metricValue !== null) {
         const date = new Date(dp.timestamp);
         const hour = date.getUTCHours();
-        hourlyBuckets[hour].push(dp[selectedMetric]);
+        hourlyBuckets[hour].push(Number(metricValue));
       }
     });
 
@@ -148,6 +149,15 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
     );
   }
 
+  const yDomain = useMemo(() => {
+    if (hourlyStats.length === 0) return ['auto', 'auto'];
+    const allValues = hourlyStats.flatMap(s => [s.min, s.max, s.mean]);
+    const min = Math.min(...allValues);
+    const max = Math.max(...allValues);
+    const padding = (max - min) * 0.1;
+    return [min - padding, max + padding];
+  }, [hourlyStats]);
+
   return (
     <Card>
       <CardHeader>
@@ -177,28 +187,40 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
             <ComposedChart data={hourlyStats} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="name" />
-              <YAxis domain={['dataMin - 1', 'dataMax + 1']} />
+              <YAxis domain={yDomain} />
               <Tooltip content={<CustomTooltip />} />
               <Legend />
 
-              {/* Min-Max Range */}
-              <Bar dataKey="max" name="Min-Max Range" fill="hsl(var(--chart-1))" opacity={0.2} barSize={40} stackId="a" />
+              <Bar
+                key="range-bar"
+                dataKey={(payload) => payload.max - payload.min}
+                name="Min-Max Range"
+                fill="hsl(var(--chart-2))"
+                opacity={0.3}
+                barSize={30}
+                stackId="a"
+              />
               
-              {/* Std Dev Range */}
-               <Bar name="Std. Dev. Range" fill="hsl(var(--chart-1))" opacity={0.4} barSize={40} stackId="b" dataKey={(payload) => payload.mean + payload.stdDev} />
+              <Line 
+                key="mean-line"
+                type="monotone"
+                dataKey="mean"
+                name="Mean"
+                stroke="hsl(var(--chart-1))"
+                strokeWidth={2}
+                dot={{r: 4}}
+                activeDot={{r: 6}}
+              />
 
-              {/* Mean value as a dot */}
-              <Line dataKey="mean" name="Mean" strokeWidth={0} activeDot={{ r: 6 }} dot={(props) => {
-                  const { cx, cy, payload } = props;
-                  if (payload.count > 0) {
-                      return <Dot cx={cx} cy={cy} r={4} fill="hsl(var(--primary))" stroke="hsl(var(--primary-foreground))" strokeWidth={1} />;
-                  }
-                  return null;
-              }} />
-
-              {/* Median value as a line */}
-              <Line dataKey="median" name="Median" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} activeDot={false} />
-
+              <Line
+                key="median-line"
+                type="monotone"
+                dataKey="median"
+                name="Median"
+                stroke="hsl(var(--destructive))"
+                strokeWidth={2}
+                dot={false}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -206,5 +228,3 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
     </Card>
   );
 }
-
-    
