@@ -45,11 +45,25 @@ export type BatteryAnalysis = {
   dayOverDayTrend: string;
 }
 
+export type TimeSensitiveInfo = {
+  recommendation: string;
+  voltageDifferenceOk: boolean;
+  solarChargingEstimate: number | null;
+  generatorSuggestion: string | null;
+};
+
+export type StateAnalysis = {
+  requiresAttention: boolean;
+  info: TimeSensitiveInfo | null;
+  timestamp: number;
+};
+
 export type BatteryData = {
   history: DataPoint[];
   rawExtractions: ExtractionResult[];
   chartInfo: ChartInfo | null;
   processedFileNames?: string[];
+  analysis?: StateAnalysis;
 }
 
 export type BatteryDataMap = Record<string, BatteryData>;

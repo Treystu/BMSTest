@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap } from "@/lib/types";
+import type { DataPoint, ChartInfo, SelectedMetrics, ExtractionResult, BatteryDataMap, StateAnalysis } from "@/lib/types";
 import { Header } from "@/components/header";
 import { ImageUploader } from "@/components/image-uploader";
 import { ChartControls } from "@/components/chart-controls";
@@ -13,6 +13,8 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { formatInTimeZone } from 'date-fns-tz';
 import { DayOverDayChart } from "@/components/day-over-day-chart";
 import { motion, AnimatePresence } from 'framer-motion';
+import { analyzeLatestData } from "./actions";
+import { TimeSensitiveDisplay } from "@/components/time-sensitive-display";
 
 const initialMetrics: SelectedMetrics = {
   soc: true,
@@ -119,7 +121,7 @@ export default function Home() {
     }
   }, [batteryIds, activeBatteryId]);
 
-  const handleNewDataPoint = useCallback((extractionData: ExtractionResult) => {
+  const handleNewDataPoint = useCallback(async (extractionData: ExtractionResult) => {
     console.log('[handleNewDataPoint] Processing new data point:', extractionData);
     const { batteryId, extractedData, timestamp, fileName } = extractionData;
 
@@ -139,10 +141,7 @@ export default function Home() {
                         const sanitizedKey = sanitizeMetricKey(newKey);
                         const value = parseNumericValue(obj[key]);
                         
-                        // Only add the metric if it sanitized to a known core metric or another valid key,
-                        // and the value is a valid number.
                         if (sanitizedKey && value !== null) {
-                            // Special rule for temperature: don't overwrite if we already found one
                             if (sanitizedKey === 'temperature' && dataPoint.temperature !== undefined) {
                                 continue;
                             }
@@ -153,6 +152,12 @@ export default function Home() {
             }
         }
         processObject(parsedData);
+
+        const analysisResult = await analyzeLatestData(dataPoint);
+        let analysis: StateAnalysis | undefined = undefined;
+        if (analysisResult.success) {
+            analysis = analysisResult.analysis;
+        }
         
         setDataByBattery(prev => {
             const existingHistory = prev[batteryId]?.history || [];
@@ -167,6 +172,7 @@ export default function Home() {
                     ...prev[batteryId],
                     history: combinedHistory,
                     rawExtractions: combinedRaw,
+                    analysis,
                 }
             };
         });
@@ -237,6 +243,7 @@ export default function Home() {
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
   const chartInfo = activeBatteryData?.chartInfo || null;
+  const analysis = activeBatteryData?.analysis || null;
   
   const availableMetrics = useMemo(() => {
     const allMetrics = new Set<string>();
@@ -335,6 +342,7 @@ export default function Home() {
                 dataByBattery={dataByBattery}
                 processedFileNames={processedFileNames}
               />
+              <TimeSensitiveDisplay analysis={analysis} />
             </motion.div>
             <motion.div 
               className="lg:col-span-2 flex flex-col gap-6"
