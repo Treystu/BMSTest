@@ -24,15 +24,16 @@ const initialMetrics: SelectedMetrics = {
 
 const sanitizeMetricKey = (key: string): string => {
     const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/gi, '');
-    
-    if (lowerKey.includes('stateofcharge') || lowerKey.includes('soc')) return 'soc';
+
+    if (lowerKey === 'soc' || lowerKey === 'stateofcharge') return 'soc';
     if (lowerKey === 'voltage') return 'voltage';
     if (lowerKey === 'current') return 'current';
-    if (lowerKey.includes('remainingcapacity') || lowerKey.includes('capacity') || lowerKey.includes('cap')) return 'capacity';
+    if (lowerKey === 'capacity' || lowerKey === 'remainingcapacity') return 'capacity';
     if (lowerKey.includes('temp') && !lowerKey.includes('num')) return 'temperature';
 
     return key.toLowerCase().replace(/[^a-z0-9_]/gi, '').replace(/\s+/g, '_').replace(/_+/g, '_');
 };
+
 
 const getFormattedDate = (timestamp: number | Date | string, formatStr: string): string => {
     if (timestamp === undefined || timestamp === null) return "Invalid Date";
@@ -73,16 +74,12 @@ const parseNumericValue = (value: any): number | null => {
     if (typeof value === 'number') return value;
     if (typeof value !== 'string') return null;
     
-    // This regex looks for an optional negative sign, followed by digits, an optional decimal point, and more digits.
     const match = value.match(/-?\d+(\.\d+)?/);
     if (match) {
         const parsed = parseFloat(match[0]);
-        // If the parsed number is 1, but the original string was more than just "1", it's likely a count or a parsing artifact.
-        // For example, "1 sensor" or "1%" when we just want the value. We discard these.
         if (parsed === 1 && value.trim() !== "1") {
            return null;
         }
-        // Same logic for 0
         if (parsed === 0 && value.trim() !== "0") {
             return null;
         }
@@ -128,12 +125,16 @@ export default function Home() {
                 if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
                     processObject(obj[key], newKey);
                 } else {
-                    const value = parseNumericValue(obj[key]);
-                    if(value !== null) {
-                        const sanitizedKey = sanitizeMetricKey(newKey);
-                        // Don't overwrite an existing temperature if we've already found one
-                        if (sanitizedKey === 'temperature' && dataPoint.temperature !== undefined) continue;
-                        dataPoint[sanitizedKey] = value;
+                    const sanitizedKey = sanitizeMetricKey(newKey);
+                    // Only parse if the sanitized key is one of our core metrics OR it's not a known status key
+                    const isStatusKey = newKey.toLowerCase().includes('status');
+                    
+                    if (Object.keys(initialMetrics).includes(sanitizedKey) || !isStatusKey) {
+                        const value = parseNumericValue(obj[key]);
+                        if(value !== null) {
+                            if (sanitizedKey === 'temperature' && dataPoint.temperature !== undefined) continue;
+                            dataPoint[sanitizedKey] = value;
+                        }
                     }
                 }
             }
@@ -184,7 +185,6 @@ export default function Home() {
             const newHistory = newData[batteryId].history || [];
             const newRawExtractions = newData[batteryId].rawExtractions || [];
 
-            // Add new filenames from the imported data to a temporary set
             if (newData[batteryId].processedFileNames) {
                 newData[batteryId].processedFileNames?.forEach(name => newFileNames.add(name));
             }
@@ -192,14 +192,12 @@ export default function Home() {
             const existingHistory = mergedData[batteryId]?.history || [];
             const existingRawExtractions = mergedData[batteryId]?.rawExtractions || [];
             
-            // Use the robust merge and sort function for both history and raw data
             const combinedHistory = mergeAndSortHistory(existingHistory, newHistory);
             const combinedRaw = mergeAndSortHistory(existingRawExtractions, newRawExtractions);
             
             const existingChartInfo = mergedData[batteryId]?.chartInfo;
             const newChartInfo = newData[batteryId].chartInfo;
             
-            // Combine filenames from both existing and new data
             const allFileNames = Array.from(new Set([...(mergedData[batteryId]?.processedFileNames || []), ...(newData[batteryId].processedFileNames || [])]));
 
             mergedData[batteryId] = {
@@ -238,7 +236,6 @@ export default function Home() {
         });
       });
     }
-    // Ensure core metrics are always available for selection
     Object.keys(initialMetrics).forEach(m => allMetrics.add(m));
     return Array.from(allMetrics);
   }, [dataHistory]);
@@ -408,5 +405,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
