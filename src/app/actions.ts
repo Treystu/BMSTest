@@ -1,4 +1,3 @@
-
 'use server';
 
 import { extractAndStructureData } from '@/ai/flows/extract-and-structure-data';
@@ -28,7 +27,7 @@ function parseTimestampFromFilename(filename: string): number {
 export async function processImage(photoDataUri: string, filename: string) {
   console.log(`[Server Action] processImage started for: ${filename}`);
   try {
-    const extractionResult = await extractAndStructureData({ photoDataUri });
+    const extractionResult = await extractAndStructureData.run({ photoDataUri });
     const timestamp = parseTimestampFromFilename(filename);
     const result = {
       success: true,

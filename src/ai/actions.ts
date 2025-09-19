@@ -1,4 +1,3 @@
-
 'use server';
 
 import { processImage } from '@/app/actions';
