@@ -112,17 +112,23 @@ export function ImageUploader({
     if (duplicates.length > 0) {
         setDuplicateFiles({ newFiles: uniqueNewFiles, existingNames: duplicates.map(f => f.name) });
     } else {
-        addFilesAndProcess(uniqueNewFiles);
+        addFilesToQueue(uniqueNewFiles);
     }
   };
 
-  const addFilesAndProcess = (files: ImageFile[]) => {
+  const addFilesToQueue = (files: ImageFile[]) => {
     const updatedFiles = [...files, ...imageFiles].slice(0, MAX_FILES);
     setImageFiles(updatedFiles);
-    startTransition(async () => {
-      await processFiles(files);
-    });
   };
+  
+  const handleProcessFiles = () => {
+    const filesToProcess = imageFiles.filter(f => f.status === 'queued');
+    if (filesToProcess.length > 0) {
+        startTransition(async () => {
+          await processFiles(filesToProcess);
+        });
+    }
+  }
 
   const processFiles = async (filesToProcess: ImageFile[]) => {
     setIsLoading(true);
@@ -239,6 +245,8 @@ export function ImageUploader({
     // Reset file input
     event.target.value = '';
   };
+  
+  const queuedFilesCount = imageFiles.filter(f => f.status === 'queued').length;
 
   return (
     <>
@@ -285,8 +293,13 @@ export function ImageUploader({
                                 </div>
                             )}
                             {(imageFiles.length > 0 || isLoading) && (
-                                <div className="flex justify-end">
+                                <div className="flex justify-end space-x-2">
                                     <Button onClick={handleClear} variant="ghost" disabled={isLoading}>Clear</Button>
+                                    {queuedFilesCount > 0 && 
+                                        <Button onClick={handleProcessFiles} disabled={isLoading || isPending}>
+                                            {isPending ? 'Starting...' : `Upload ${queuedFilesCount} File(s)`}
+                                        </Button>
+                                    }
                                 </div>
                             )}
                         </div>
@@ -331,11 +344,11 @@ export function ImageUploader({
                 <AlertDialogFooter>
                     <AlertDialogCancel onClick={() => {
                         const nonDuplicates = duplicateFiles?.newFiles.filter(f => !duplicateFiles.existingNames.includes(f.name));
-                        if (nonDuplicates && nonDuplicates.length > 0) addFilesAndProcess(nonDuplicates);
+                        if (nonDuplicates && nonDuplicates.length > 0) addFilesToQueue(nonDuplicates);
                         setDuplicateFiles(null);
                     }}>Skip Duplicates</AlertDialogCancel>
                     <AlertDialogAction onClick={() => {
-                        if (duplicateFiles) addFilesAndProcess(duplicateFiles.newFiles);
+                        if (duplicateFiles) addFilesToQueue(duplicateFiles.newFiles);
                         setDuplicateFiles(null);
                     }}>Process All</AlertDialogAction>
                 </AlertDialogFooter>
