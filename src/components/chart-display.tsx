@@ -9,7 +9,7 @@ import type { DataPoint, ChartInfo, SelectedMetrics } from '@/lib/types';
 import { subDays, subWeeks, subMonths } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea, Brush
+  ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea, Brush
 } from 'recharts';
 
 export type VisibleRange = {
@@ -132,15 +132,21 @@ export function ChartDisplay({
     const lastDataPointTime = data[data.length - 1]?.timestamp;
     if (!lastDataPointTime) return { timeFilteredData: [], visibleRange: 0 };
 
-    const filtered = data.filter(d => {
-        if (d.timestamp === null || d.timestamp === undefined) return false;
-        switch (dateRange) {
-            case '1d': return d.timestamp >= subDays(lastDataPointTime, 1).getTime();
-            case '1w': return d.timestamp >= subWeeks(lastDataPointTime, 7).getTime();
-            case '1m': return d.timestamp >= subMonths(lastDataPointTime, 1).getTime();
-            default: return true; // 'all'
-        }
-    });
+    let filtered;
+    switch (dateRange) {
+        case '1d':
+            filtered = data.filter(d => d.timestamp >= subDays(lastDataPointTime, 1).getTime());
+            break;
+        case '1w':
+            filtered = data.filter(d => d.timestamp >= subWeeks(lastDataPointTime, 1).getTime());
+            break;
+        case '1m':
+            filtered = data.filter(d => d.timestamp >= subMonths(lastDataPointTime, 1).getTime());
+            break;
+        default: // 'all'
+            filtered = data;
+            break;
+    }
 
     if (filtered.length === 0) return { timeFilteredData: [], visibleRange: 0 };
     
@@ -267,7 +273,7 @@ export function ChartDisplay({
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={450}>
-          <LineChart 
+          <ComposedChart 
             data={timeFilteredData} 
             margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
             onMouseDown={handleMouseDown}
@@ -304,33 +310,61 @@ export function ChartDisplay({
             <Tooltip content={<CustomTooltipContent />} />
             <Legend wrapperStyle={{ bottom: 25, left: 20 }}/>
             
-            {leftMetrics.map((metric) => (
-              <Line
-                key={metric}
-                yAxisId="left"
-                type="monotone"
-                dataKey={metric}
-                stroke={getLineColor(metric)}
-                dot={false}
-                strokeWidth={2}
-                connectNulls={true}
-                isAnimationActive={!zoomDomain}
-              />
-            ))}
+            {leftMetrics.map((metric) => {
+              const color = getLineColor(metric);
+              return (
+                <React.Fragment key={metric}>
+                  <Area
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey={metric}
+                    fill={color}
+                    stroke={color}
+                    fillOpacity={0.2}
+                    strokeWidth={0}
+                    connectNulls={true}
+                    isAnimationActive={!zoomDomain}
+                  />
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey={metric}
+                    stroke={color}
+                    dot={false}
+                    strokeWidth={1.5}
+                    connectNulls={true}
+                    isAnimationActive={!zoomDomain}
+                  />
+                </React.Fragment>
+            )})}
             
-            {rightMetrics.map((metric) => (
-              <Line
-                key={metric}
-                yAxisId="right"
-                type="monotone"
-                dataKey={metric}
-                stroke={getLineColor(metric)}
-                dot={false}
-                strokeWidth={2}
-                connectNulls={true}
-                isAnimationActive={!zoomDomain}
-              />
-            ))}
+            {rightMetrics.map((metric) => {
+              const color = getLineColor(metric);
+              return (
+                <React.Fragment key={metric}>
+                   <Area
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey={metric}
+                    fill={color}
+                    stroke={color}
+                    fillOpacity={0.2}
+                    strokeWidth={0}
+                    connectNulls={true}
+                    isAnimationActive={!zoomDomain}
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey={metric}
+                    stroke={color}
+                    dot={false}
+                    strokeWidth={1.5}
+                    connectNulls={true}
+                    isAnimationActive={!zoomDomain}
+                  />
+                </React.Fragment>
+            )})}
 
             {refAreaLeft && refAreaRight ? (
                 <ReferenceArea 
@@ -348,7 +382,7 @@ export function ChartDisplay({
               tickFormatter={(value) => getFormattedTimestamp(value, visibleRange)}
               data={timeFilteredData}
             >
-                <LineChart>
+                <ComposedChart>
                   {allMetrics.map((metric) => (
                     <Line 
                       key={`${metric}-brush`}
@@ -362,9 +396,9 @@ export function ChartDisplay({
                   ))}
                   <YAxis yAxisId="left" hide />
                   <YAxis yAxisId="right" hide />
-                </LineChart>
+                </ComposedChart>
             </Brush>
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </CardContent>
     </Card>
