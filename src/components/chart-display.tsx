@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -404,5 +404,3 @@ export function ChartDisplay({
     </Card>
   );
 }
-
-    
