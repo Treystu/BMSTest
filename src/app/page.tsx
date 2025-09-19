@@ -134,8 +134,29 @@ export default function Home() {
     }
   }, [toast, activeBatteryId]);
 
-  const handleMultipleDataPoints = useCallback((newData: BatteryDataMap) => {
+  const handleMultipleDataPoints = useCallback(async (newData: BatteryDataMap) => {
     const newFileNames = new Set<string>();
+    const analysisPromises: Promise<{ batteryId: string, analysis: StateAnalysis | undefined }>[] = [];
+
+    for (const batteryId in newData) {
+        const { history } = newData[batteryId];
+        if (history && history.length > 0) {
+            const latestDataPoint = history[history.length - 1];
+            analysisPromises.push(
+                analyzeLatestData(latestDataPoint).then(res => ({ 
+                    batteryId,
+                    analysis: res.success ? res.analysis : undefined
+                }))
+            );
+        }
+    }
+
+    const analyses = await Promise.all(analysisPromises);
+    const analysisMap = analyses.reduce((acc, { batteryId, analysis }) => {
+        acc[batteryId] = analysis;
+        return acc;
+    }, {} as { [key: string]: StateAnalysis | undefined });
+
     setDataByBattery(prevData => {
         const mergedData = { ...prevData };
         for (const batteryId in newData) {
@@ -147,14 +168,22 @@ export default function Home() {
                 history: mergeAndSortHistory(existing?.history, history),
                 rawExtractions: mergeAndSortHistory(existing?.rawExtractions, rawExtractions),
                 chartInfo: newInfo || existing?.chartInfo || null,
-                processedFileNames: Array.from(new Set([...(existing?.processedFileNames || []), ...(files || [])]))
+                processedFileNames: Array.from(new Set([...(existing?.processedFileNames || []), ...(files || [])])),
+                analysis: analysisMap[batteryId] || existing?.analysis,
             };
         }
         return mergedData;
     });
-    if (newFileNames.size > 0) setProcessedFileNames(prev => new Set([...prev, ...newFileNames]));
-    if (!activeBatteryId && Object.keys(newData).length > 0) setActiveBatteryId(Object.keys(newData)[0]);
-  }, [activeBatteryId]);
+
+    if (newFileNames.size > 0) {
+        setProcessedFileNames(prev => new Set([...prev, ...newFileNames]));
+    }
+
+    if (!activeBatteryId && Object.keys(newData).length > 0) {
+        setActiveBatteryId(Object.keys(newData)[0]);
+    }
+}, [activeBatteryId]);
+
 
   const activeBatteryData = activeBatteryId ? dataByBattery[activeBatteryId] : undefined;
   const dataHistory = activeBatteryData?.history || [];
