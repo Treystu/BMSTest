@@ -246,8 +246,13 @@ export function ImageUploader({
         onMultipleDataPoints(parsedData);
         toast({ title: "Data Imported Successfully", description: "The data from your JSON file has been loaded." });
       } catch (error: any) {
+        console.error("JSON Import Error:", error);
         toast({ title: "Failed to Import Data", description: `Error reading JSON file: ${error.message}`, variant: "destructive", });
       }
+    };
+    reader.onerror = (e) => {
+        console.error("File Reading Error:", e);
+        toast({ title: "File Reading Error", description: "Could not read the selected file.", variant: "destructive" });
     };
     reader.readAsText(file);
     if (jsonInputRef.current) jsonInputRef.current.value = "";
@@ -497,5 +502,3 @@ export function ImageUploader({
     </>
   );
 }
-
-    

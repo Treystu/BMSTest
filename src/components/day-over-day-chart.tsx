@@ -12,13 +12,13 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Dot,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Label } from './ui/label';
 import type { DataPoint } from '@/lib/types';
 import { useState } from 'react';
+import { formatInTimeZone } from 'date-fns-tz';
 
 type DayOverDayChartProps = {
   dataHistory: DataPoint[];
@@ -67,28 +67,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-// Custom component to render the median line inside the bar
-const MedianLine = (props: any) => {
-    const { x, y, width, height, payload } = props;
-    const { mean, median } = payload;
-    
-    // Only render if there's a visual difference to avoid clutter
-    if (Math.abs(mean - median) < 0.01 * Math.abs(mean)) return null;
-
-    // The y prop from recharts is the top of the bar for positive values.
-    // The median value needs to be scaled to the Y-axis.
-    // This requires access to the scale function, which is tricky here.
-    // A simpler approximation: show it relative to the bar's height.
-    // This is not perfectly accurate but gives a visual cue.
-    const yAxis = props.yAxis;
-    const medianY = yAxis.scale(median);
-
-    if (medianY < y || medianY > y + height) return null;
-
-    return <line x1={x} y1={medianY} x2={x + width} stroke="hsl(var(--destructive))" strokeWidth={2} />;
-};
-
-
 export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayChartProps) {
   const [selectedMetric, setSelectedMetric] = useState<string>(availableMetrics.includes('soc') ? 'soc' : availableMetrics[0] || '');
 
@@ -98,12 +76,12 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
     }
 
     const hourlyBuckets: { [hour: number]: number[] } = Array.from({ length: 24 }, () => []);
+    const timeZone = 'America/Los_Angeles';
 
     dataHistory.forEach((dp) => {
       const metricValue = dp[selectedMetric];
       if (metricValue !== undefined && metricValue !== null) {
-        const date = new Date(dp.timestamp);
-        const hour = date.getUTCHours();
+        const hour = parseInt(formatInTimeZone(dp.timestamp, timeZone, 'H'), 10);
         hourlyBuckets[hour].push(Number(metricValue));
       }
     });
@@ -125,7 +103,6 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
       const q3Index = Math.floor(values.length * 3 / 4);
       const q1 = values.length > 1 ? (values.length % 4 === 0 ? (values[q1Index-1] + values[q1Index])/2 : values[q1Index]) : values[0];
       const q3 = values.length > 1 ? (values.length % 4 === 0 ? (values[q3Index-1] + values[q3Index])/2 : values[q3Index]) : values[0];
-
 
       const stdDev = Math.sqrt(values.map((x) => Math.pow(x - mean, 2)).reduce((a, b) => a + b) / values.length);
 
@@ -193,12 +170,11 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
 
               <Bar
                 key="range-bar"
-                dataKey={(payload) => payload.max - payload.min}
-                name="Min-Max Range"
+                dataKey={(payload) => [payload.q1, payload.q3]}
+                name="Interquartile Range"
                 fill="hsl(var(--chart-2))"
-                opacity={0.3}
+                opacity={0.5}
                 barSize={30}
-                stackId="a"
               />
               
               <Line 

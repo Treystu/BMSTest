@@ -269,7 +269,7 @@ export default function Home() {
                                             </CardContent>
                                         </Card>
                                     )}
-                                    <ChartDisplay {...{ batteryId: activeBatteryId || "", data: dataHistory, selectedMetrics, dateRange, chartInfo, isLoading: isLoading && dataHistory.length === 0, onVisibleRangeChange }} />
+                                    <ChartDisplay {...{ batteryId: activeBatteryId || "", data: dataHistory, selectedMetrics, dateRange, chartInfo, isLoading: isLoading && dataHistory.length === 0, onVisibleRangeChange: handleVisibleRangeChange }} />
                                 </>
                             ) : (
                                 <DayOverDayChart {...{ dataHistory, availableMetrics }} />
