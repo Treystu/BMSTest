@@ -3,24 +3,27 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { DataPoint, StateAnalysis, TimeSensitiveInfo } from '../../lib/types';
 
-// Rough approximation of daylight hours for simplicity
 const isDaylight = (timestamp: number) => {
   const hour = new Date(timestamp).getHours();
   return hour > 6 && hour < 18; // 6am to 6pm
 };
 
-// Placeholder for weather condition - in a real app, this would come from a weather API
 const isSunny = () => Math.random() > 0.5;
 
-// Define the input schema for the flow
 const AnalyzeCurrentStateInput = z.object({
-  latestDataPoint: z.any(), // Using z.any() to match DataPoint structure
+  latestDataPoint: z.any(),
 });
 
-// Define the output schema for the flow
 const AnalyzeCurrentStateOutput = z.object({
   analysis: z.custom<StateAnalysis>(),
 });
+
+const MAX_VOLTAGE_DIFFERENCE = 0.08;
+const LOW_SOC_THRESHOLD_NIGHT = 45;
+const CRITICAL_SOC_THRESHOLD_NIGHT = 25;
+const HIGH_MOS_TEMP_THRESHOLD = 60;
+const LOW_RUNTIME_HOURS_THRESHOLD = 4;
+
 
 export const analyzeCurrentStateFlow = ai.defineFlow(
   {
@@ -42,6 +45,8 @@ export const analyzeCurrentStateFlow = ai.defineFlow(
       };
     }
 
+    const { soc, current, capacity, temp_mos: tempMos } = latestDataPoint;
+
     const info: TimeSensitiveInfo = {
       recommendation: '',
       voltageDifferenceOk: true,
@@ -49,65 +54,82 @@ export const analyzeCurrentStateFlow = ai.defineFlow(
       generatorSuggestion: null,
       estimatedRuntimeHours: null,
       remainingCapacity: null,
+      soc: typeof soc === 'number' ? soc : undefined,
+      current: typeof current === 'number' ? current : undefined,
+      tempMos: typeof tempMos === 'number' ? tempMos : undefined,
     };
 
     let requiresAttention = false;
+    const recommendations: string[] = [];
 
-    // 1. Crucial field validation
-    if (latestDataPoint.v_diff > 0.1) {
-      info.voltageDifferenceOk = false;
-      info.recommendation += 'High voltage difference detected. Immediate attention required. ';
-      requiresAttention = true;
+    const voltageKeys = Object.keys(latestDataPoint).filter(k => k.startsWith('v_cell'));
+    let minVoltage = Infinity, maxVoltage = -Infinity;
+    if (voltageKeys.length > 0) {
+        voltageKeys.forEach(key => {
+            const v = latestDataPoint[key];
+            if (v < minVoltage) minVoltage = v;
+            if (v > maxVoltage) maxVoltage = v;
+        });
+        const vDiff = maxVoltage - minVoltage;
+        info.voltageDifference = vDiff;
+        if (vDiff > MAX_VOLTAGE_DIFFERENCE) {
+            info.voltageDifferenceOk = false;
+            requiresAttention = true;
+            recommendations.push(`High voltage difference of ${vDiff.toFixed(3)}V detected.`);
+        } else {
+          info.voltageDifferenceOk = true;
+        }
     }
-
-    // 2. Battery Runtime Estimation
-    const { capacity, current, soc } = latestDataPoint;
 
     if (typeof capacity === 'number' && capacity > 0) {
       info.remainingCapacity = capacity;
-
-      // Check if battery is discharging at a significant rate
-      if (typeof current === 'number' && current < -0.1) {
-        const rawHours = capacity / -current;
-        info.estimatedRuntimeHours = rawHours;
-
-        const hours = Math.floor(rawHours);
-        const minutes = Math.round((rawHours - hours) * 60);
-        
-        info.recommendation += `With the current load, the battery is estimated to last for ${hours}h ${minutes}m. `;
-      } else if (typeof current === 'number' && current >= 0) {
-        // A value of -1 can be used to indicate 'Charging' in the UI
-        info.estimatedRuntimeHours = -1; 
-        info.recommendation += `The battery is currently charging or idle. `;
-      }
     }
 
-    // 3. Time-of-day awareness
+    if (typeof current === 'number' && current < -0.1 && typeof capacity === 'number') {
+      const rawHours = capacity / -current;
+      info.estimatedRuntimeHours = rawHours;
+    } else if (typeof current === 'number' && current >= 0) {
+      info.estimatedRuntimeHours = null; // Charging or idle
+    }
+
     if (isDaylight(latestDataPoint.timestamp)) {
-      // Daylight hours: Account for solar charging
       if (isSunny()) {
-        info.solarChargingEstimate = 65; // Sunny: 60-70 amps
-        info.recommendation += `It\'s sunny, expect solar charging of around 60-70 amps. `;
+        info.solarChargingEstimate = 65;
+        recommendations.push("It's sunny, expect solar charging of 60-70 amps.");
       } else {
-        info.solarChargingEstimate = 20; // Cloudy: ~20 amps
-        info.recommendation += `It\'s cloudy, expect solar charging of around 20 amps. `;
+        info.solarChargingEstimate = 20;
+        recommendations.push("It's cloudy, expect solar charging of around 20 amps.");
       }
     } else {
-      // Night time: Check for low battery and suggest generator
-      if (typeof soc === 'number' && soc < 30) { // Assuming SOC < 30% is low battery
+      // Night time logic
+      if (typeof soc === 'number' && soc < LOW_SOC_THRESHOLD_NIGHT) {
         requiresAttention = true;
-        info.recommendation += `Low battery detected at night. Consider starting the generator. `;
-        if (soc < 15) { // Critically low
-          info.generatorSuggestion = 'Battery is critically low. Recommend running both chargers at 2000w for faster charging.';
+        recommendations.push(`Low battery at ${soc.toFixed(1)}% detected at night.`);
+
+        if (soc < CRITICAL_SOC_THRESHOLD_NIGHT) {
+          info.generatorSuggestion = 'Battery is critically low. Run both chargers at 2000w.';
         } else {
-          info.generatorSuggestion = 'Recommend running one charger at 1000w with eco-mode for efficiency.';
+          info.generatorSuggestion = 'Recommend running one charger at 1000w with eco-mode.';
         }
+      } else if (typeof soc === 'number') {
+          recommendations.push('Battery levels are sufficient for overnight usage.');
       }
     }
 
-    // 4. Summarize recommendations
-    if (!requiresAttention && info.recommendation === '') {
+    if (typeof tempMos === 'number' && tempMos > HIGH_MOS_TEMP_THRESHOLD) {
+        requiresAttention = true;
+        recommendations.push(`High MOS temperature of ${tempMos.toFixed(1)}°C. Reduce load.`)
+    }
+    
+    if (info.estimatedRuntimeHours !== null && info.estimatedRuntimeHours < LOW_RUNTIME_HOURS_THRESHOLD) {
+        requiresAttention = true;
+        recommendations.push('Estimated runtime is very low. Reduce load immediately.');
+    }
+
+    if (recommendations.length === 0) {
       info.recommendation = 'System operating within normal parameters.';
+    } else {
+      info.recommendation = recommendations.join(' ');
     }
 
     return {

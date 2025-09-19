@@ -48,6 +48,10 @@ export type BatteryAnalysis = {
 export type TimeSensitiveInfo = {
   recommendation: string;
   voltageDifferenceOk: boolean;
+  voltageDifference?: number;
+  soc?: number;
+  current?: number;
+  tempMos?: number;
   solarChargingEstimate: number | null;
   generatorSuggestion: string | null;
   estimatedRuntimeHours: number | null;
