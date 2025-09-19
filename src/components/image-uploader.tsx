@@ -121,36 +121,35 @@ export function ImageUploader({
     const updatedFiles = [...files, ...imageFiles].slice(0, MAX_FILES);
     setImageFiles(updatedFiles);
     startTransition(async () => {
-      await processFiles(files.map(f => f.id));
+      await processFiles(files);
     });
   };
 
-  const processFiles = async (fileIds: string[]) => {
+  const processFiles = async (filesToProcess: ImageFile[]) => {
     setIsLoading(true);
     setProgress(0);
-
-    const filesToProcess = imageFiles.filter(f => fileIds.includes(f.id) && f.status === 'queued');
 
     const updateFileStatus = (id: string, status: ImageFileStatus, error?: string) => {
       setImageFiles(prev => prev.map(f => f.id === id ? { ...f, status, error } : f));
     };
+    
+    filesToProcess.forEach(f => updateFileStatus(f.id, 'processing'));
 
     try {
         const imageBlobs = await Promise.all(filesToProcess.map(async (file) => {
-            updateFileStatus(file.id, 'processing');
             const response = await fetch(file.preview);
             return { id: file.id, name: file.name, blob: await response.blob() };
         }));
 
-        const result = await extractDataWithFunctionCallingFromImageBatch(imageBlobs.map(ib => ib.blob));
+        const result = await extractDataWithFunctionCallingFromImageBatch(imageBlobs);
+        
         if (result.success) {
-            result.extractions.forEach((extraction, index) => {
-                const imageFile = imageBlobs[index];
+            result.extractions.forEach((extraction) => {
                 if (extraction.success) {
-                    onNewDataPoint({ ...extraction.data, fileName: imageFile.name });
-                    updateFileStatus(imageFile.id, 'success');
+                    onNewDataPoint({ ...(extraction as any).data, fileName: filesToProcess.find(f => f.id === extraction.imageId)?.name || 'unknown' });
+                    updateFileStatus(extraction.imageId, 'success');
                 } else {
-                    updateFileStatus(imageFile.id, 'error', extraction.error);
+                    updateFileStatus(extraction.imageId, 'error', extraction.error);
                 }
                 setProgress(prev => prev + 100 / filesToProcess.length);
             });

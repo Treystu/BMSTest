@@ -12,33 +12,20 @@ const blobToDataURL = (blob: Blob): Promise<string> => {
   });
 };
 
-export async function extractTextFromImage(image: Blob) {
-  // This is a placeholder. In a real app, you'd use an OCR library or a cloud service.
-  return {
-    success: true,
-    text: '{"soc": "50%", "voltage": "12.5V", "current": "-2.1A", "capacity": "88Ah"}'
-  };
-}
-
-export async function extractDataWithFunctionCalling(image: Blob, fileName: string) {
-    const dataUrl = await blobToDataURL(image);
-    const result = await processImage(dataUrl, fileName);
-    return result;
-}
-
-export async function extractDataWithFunctionCallingFromImageBatch(images: Blob[]) {
+export async function extractDataWithFunctionCallingFromImageBatch(images: {id: string, name: string, blob: Blob}[]) {
     try {
-        const extractions = await Promise.all(images.map(async (image, index) => {
-            const dataUrl = await blobToDataURL(image);
-            // We use a generic name here because the original filename is not available for blobs.
-            // The caller should ideally pass in filenames if they are available.
-            const fileName = `image_${Date.now()}_${index}.png`;
+        const extractions = await Promise.all(images.map(async (image) => {
+            const dataUrl = await blobToDataURL(image.blob);
             try {
-                const result = await processImage(dataUrl, fileName);
-                return result;
+                const result = await processImage(dataUrl, image.name);
+                if (result.success) {
+                    return { ...result, imageId: image.id };
+                }
+                return { success: false, error: result.error, imageId: image.id };
+
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-                return { success: false, error: errorMessage };
+                return { success: false, error: errorMessage, imageId: image.id };
             }
         }));
         
@@ -50,4 +37,3 @@ export async function extractDataWithFunctionCallingFromImageBatch(images: Blob[
         return { success: false, error: errorMessage };
     }
 }
-
