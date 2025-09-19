@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { extractTextFromImage, extractDataWithFunctionCalling, extractDataWithFunctionCallingFromImageBatch } from '../ai/actions';
+import { extractDataWithFunctionCallingFromImageBatch } from '@/ai/actions';
 import type { DataPoint, ExtractionResult, BatteryDataMap, ImageFile, ImageFileStatus } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
