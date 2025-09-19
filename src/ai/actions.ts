@@ -50,3 +50,4 @@ export async function extractDataWithFunctionCallingFromImageBatch(images: Blob[
         return { success: false, error: errorMessage };
     }
 }
+
