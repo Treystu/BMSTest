@@ -111,6 +111,15 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
 
   }, [dataHistory, selectedMetric]);
 
+  const yDomain = useMemo(() => {
+    if (hourlyStats.length === 0) return ['auto', 'auto'];
+    const allValues = hourlyStats.flatMap(s => [s.min, s.max, s.mean]);
+    const min = Math.min(...allValues);
+    const max = Math.max(...allValues);
+    const padding = (max - min) * 0.1;
+    return [min - padding, max + padding];
+  }, [hourlyStats]);
+
   if (dataHistory.length < 2) {
     return (
       <Card>
@@ -125,15 +134,6 @@ export function DayOverDayChart({ dataHistory, availableMetrics }: DayOverDayCha
       </Card>
     );
   }
-
-  const yDomain = useMemo(() => {
-    if (hourlyStats.length === 0) return ['auto', 'auto'];
-    const allValues = hourlyStats.flatMap(s => [s.min, s.max, s.mean]);
-    const min = Math.min(...allValues);
-    const max = Math.max(...allValues);
-    const padding = (max - min) * 0.1;
-    return [min - padding, max + padding];
-  }, [hourlyStats]);
 
   return (
     <Card>
