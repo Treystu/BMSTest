@@ -55,8 +55,10 @@ export function TimeSensitiveDisplay({ analysis }: TimeSensitiveDisplayProps) {
                 )}
                 <div>
                     <p className="font-bold">System Status</p>
-                    <ul className="list-disc list-inside text-muted-foreground">
-                        <li>Voltage Difference: <span className={info.voltageDifferenceOk ? '' : 'text-destructive font-bold'}>{info.voltageDifferenceOk ? 'OK' : 'High'}</span></li>
+                    <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                        <li className={!info.voltageDifferenceOk ? 'bg-destructive/10 p-2 rounded-md' : ''}>
+                            Voltage Difference: <span className={info.voltageDifferenceOk ? '' : 'text-destructive font-bold'}>{info.voltageDifferenceOk ? 'OK' : 'High'}</span>
+                        </li>
                         {info.solarChargingEstimate !== null && <li>Solar Estimate: {info.solarChargingEstimate} amps</li>}
                     </ul>
                 </div>

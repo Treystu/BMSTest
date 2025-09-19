@@ -247,33 +247,43 @@ export default function Home() {
 
                         <div className="space-y-6">
                             <ChartControls {...{ availableMetrics, selectedMetrics, setSelectedMetrics, dateRange, setDateRange, hasData: dataHistory.length > 0, chartMode, setChartMode }} />
-                            {chartMode === 'trend' ? (
-                                <>
-                                    {rangeAnalysisData && (
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle>Selected Range Analysis</CardTitle>
-                                                <CardDescription>Averages from {rangeAnalysisData.startDate} to {rangeAnalysisData.endDate}.</CardDescription>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                                    {Object.entries(rangeAnalysisData.stats).map(([metric, data]) => (
-                                                        data.count > 0 && (
-                                                            <div key={metric}>
-                                                                <p className="font-semibold capitalize">{metric.replace(/_/g, ' ')}</p>
-                                                                <p className="text-muted-foreground">{data.average.toFixed(3)}</p>
-                                                            </div>
-                                                        )
-                                                    ))}
-                                                </div>
-                                            </CardContent>
-                                        </Card>
+                            <AnimatePresence mode="wait">
+                                <motion.div
+                                    key={chartMode}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                    transition={{ duration: 0.2 }}
+                                >
+                                    {chartMode === 'trend' ? (
+                                        <div className="space-y-6">
+                                            {rangeAnalysisData && (
+                                                <Card>
+                                                    <CardHeader>
+                                                        <CardTitle>Selected Range Analysis</CardTitle>
+                                                        <CardDescription>Averages from {rangeAnalysisData.startDate} to {rangeAnalysisData.endDate}.</CardDescription>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                                            {Object.entries(rangeAnalysisData.stats).map(([metric, data]) => (
+                                                                data.count > 0 && (
+                                                                    <div key={metric}>
+                                                                        <p className="font-semibold capitalize">{metric.replace(/_/g, ' ')}</p>
+                                                                        <p className="text-muted-foreground">{data.average.toFixed(3)}</p>
+                                                                    </div>
+                                                                )
+                                                            ))}
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            )}
+                                            <ChartDisplay {...{ batteryId: activeBatteryId || "", data: dataHistory, selectedMetrics, dateRange, chartInfo, isLoading: isLoading && dataHistory.length === 0, onVisibleRangeChange: handleVisibleRangeChange }} />
+                                        </div>
+                                    ) : (
+                                        <DayOverDayChart {...{ dataHistory, availableMetrics }} />
                                     )}
-                                    <ChartDisplay {...{ batteryId: activeBatteryId || "", data: dataHistory, selectedMetrics, dateRange, chartInfo, isLoading: isLoading && dataHistory.length === 0, onVisibleRangeChange: handleVisibleRangeChange }} />
-                                </>
-                            ) : (
-                                <DayOverDayChart {...{ dataHistory, availableMetrics }} />
-                            )}
+                                </motion.div>
+                            </AnimatePresence>
                         </div>
                     </motion.div>
                 )}
