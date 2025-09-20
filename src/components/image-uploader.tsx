@@ -118,7 +118,7 @@ export function ImageUploader({
   };
 
   const addFilesToQueue = (files: ImageFile[]) => {
-    const updatedFiles = [...files, ...imageFiles].slice(0, MAX_FILES);
+    const updatedFiles = [...imageFiles, ...files].slice(0, MAX_FILES);
     setImageFiles(updatedFiles);
   };
   
