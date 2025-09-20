@@ -157,7 +157,8 @@ export function ImageUploader({
                 } else {
                     updateFileStatus(extraction.imageId, 'error', extraction.error);
                 }
-                setProgress(prev => prev + (index + 1) * (100 / filesToProcess.length));
+                // This progress update can be a bit jumpy, but it's better than nothing.
+                setProgress(prev => prev + (100 / filesToProcess.length));
             });
         } else {
             toast({ title: 'Batch Processing Error', description: result.error, variant: 'destructive' });
