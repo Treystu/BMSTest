@@ -151,8 +151,8 @@ export function ImageUploader({
         
         if (result.success) {
             result.extractions.forEach((extraction) => {
-                if (extraction.success) {
-                    onNewDataPoint({ ...(extraction as any).data, fileName: filesToProcess.find(f => f.id === extraction.imageId)?.name || 'unknown' });
+                if (extraction.success && extraction.data) {
+                    onNewDataPoint({ ...extraction.data, fileName: filesToProcess.find(f => f.id === extraction.imageId)?.name || 'unknown' });
                     updateFileStatus(extraction.imageId, 'success');
                 } else {
                     updateFileStatus(extraction.imageId, 'error', extraction.error);
@@ -164,8 +164,9 @@ export function ImageUploader({
             filesToProcess.forEach(f => updateFileStatus(f.id, 'error', result.error));
         }
     } catch (e: any) {
-        toast({ title: 'Image Processing Failed', description: e.message, variant: 'destructive' });
+        toast({ title: 'Image Processing Failed', description: 'An unexpected response was received from the server.', variant: 'destructive' });
         filesToProcess.forEach(f => updateFileStatus(f.id, 'error', e.message));
+        console.error("Upload failed", e);
     } finally {
         setIsLoading(false);
         setProgress(100);
