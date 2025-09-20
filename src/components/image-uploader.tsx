@@ -164,7 +164,7 @@ export function ImageUploader({
             filesToProcess.forEach(f => updateFileStatus(f.id, 'error', result.error));
         }
     } catch (e: any) {
-        toast({ title: 'Image Processing Failed', description: 'An unexpected response was received from the server.', variant: 'destructive' });
+        toast({ title: 'Image Processing Failed', description: e.message || 'An unexpected error occurred.', variant: 'destructive' });
         filesToProcess.forEach(f => updateFileStatus(f.id, 'error', e.message));
         console.error("Upload failed", e);
     } finally {
