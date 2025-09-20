@@ -150,14 +150,14 @@ export function ImageUploader({
         const result = await extractDataWithFunctionCallingFromImageBatch(imageBlobs);
         
         if (result.success) {
-            result.extractions.forEach((extraction) => {
+            result.extractions.forEach((extraction, index) => {
                 if (extraction.success && extraction.data) {
-                    onNewDataPoint({ ...extraction.data, fileName: filesToProcess.find(f => f.id === extraction.imageId)?.name || 'unknown' });
+                    onNewDataPoint(extraction.data);
                     updateFileStatus(extraction.imageId, 'success');
                 } else {
                     updateFileStatus(extraction.imageId, 'error', extraction.error);
                 }
-                setProgress(prev => prev + 100 / filesToProcess.length);
+                setProgress(prev => prev + (index + 1) * (100 / filesToProcess.length));
             });
         } else {
             toast({ title: 'Batch Processing Error', description: result.error, variant: 'destructive' });
