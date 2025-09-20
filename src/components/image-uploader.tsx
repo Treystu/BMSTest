@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useRef, useTransition, useCallback, useEffect } from 'react';
@@ -18,7 +19,7 @@ const MAX_SIZE_MB = 10;
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
 const fileStatusIcons: { [key in ImageFileStatus]: React.ReactElement } = {
-  queued: <Loader className="h-5 w-5 animate-spin text-gray-400" />,
+  queued: <UploadCloud className="h-5 w-5 text-gray-500" />,
   processing: <Loader className="h-5 w-5 animate-spin text-blue-500" />,
   success: <CheckCircle className="h-5 w-5 text-green-500" />,
   error: <XCircle className="h-5 w-5 text-red-500" />,
