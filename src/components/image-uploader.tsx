@@ -1,63 +1,84 @@
 
 "use client";
 
-import React, { useState, useRef, useTransition, useCallback, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileText, CheckCircle, XCircle, Loader, Download, AlertTriangle, UploadCloud } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useState, useRef, useTransition, useCallback, useEffect } from 'react';
+import Image from 'next/image';
+import { Upload, X, Loader2, Trash2, Download, UploadCloud, AlertCircle, CheckCircle, RefreshCw, Clock, Check, ShieldCheck, Copy } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { extractDataWithFunctionCallingFromImageBatch } from '@/ai/actions';
-import type { DataPoint, ExtractionResult, BatteryDataMap, ImageFile, ImageFileStatus } from '@/lib/types';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { processImage } from '@/app/actions';
+import type { ExtractionResult, BatteryDataMap, ImageFile } from '@/lib/types';
+import JSZip from 'jszip';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
+import { ScrollArea } from './ui/scroll-area';
 
-
-const MAX_FILES = 20;
-const MAX_SIZE_MB = 10;
-const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
-
-const fileStatusIcons: { [key in ImageFileStatus]: React.ReactElement } = {
-  queued: <UploadCloud className="h-5 w-5 text-gray-500" />,
-  processing: <Loader className="h-5 w-5 animate-spin text-blue-500" />,
-  success: <CheckCircle className="h-5 w-5 text-green-500" />,
-  error: <XCircle className="h-5 w-5 text-red-500" />,
-  duplicate: <AlertTriangle className="h-5 w-5 text-yellow-500" />
+type ImageUploaderProps = {
+  onNewDataPoint: (result: ExtractionResult) => void;
+  onMultipleDataPoints: (data: BatteryDataMap) => void;
+  setIsLoading: (isLoading: boolean) => void;
+  isLoading: boolean;
+  dataByBattery: BatteryDataMap;
+  processedFileNames: Set<string>;
 };
 
-const readFileAsDataURL = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+const isImageFile = (fileName: string) => {
+    return /\.(jpe?g|png|webp)$/i.test(fileName);
 };
 
-const processZipFile = async (zipFile: File): Promise<ImageFile[]> => {
-    const JSZip = (await import('jszip')).default;
-    const zip = await JSZip.loadAsync(zipFile);
-    const imageFiles: ImageFile[] = [];
-    const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
+const coreMetrics = ['soc', 'voltage', 'current', 'capacity'];
 
-    for (const relativePath in zip.files) {
-        const zipEntry = zip.files[relativePath];
-        if (!zipEntry.dir && imageExtensions.some(ext => relativePath.toLowerCase().endsWith(ext))) {
-            const blob = await zipEntry.async('blob');
-            const file = new File([blob], zipEntry.name, { type: blob.type });
-            const preview = await readFileAsDataURL(file);
-            imageFiles.push({
-                id: `${zipEntry.name}-${zipEntry.date.getTime()}`,
-                preview,
-                name: zipEntry.name,
-                status: 'queued'
-            });
-        }
+const StatusIcon = ({ status, error }: { status: ImageFile['status'], error?: string }) => {
+    let icon;
+    let tooltipText;
+    let className;
+
+    switch (status) {
+        case 'queued':
+            icon = <Clock className="h-3 w-3" />;
+            tooltipText = 'Queued';
+            className = 'bg-gray-400';
+            break;
+        case 'processing':
+            icon = <Loader2 className="h-3 w-3 animate-spin" />;
+            tooltipText = 'Processing...';
+            className = 'bg-blue-500';
+            break;
+        case 'success':
+            icon = <CheckCircle className="h-3 w-3" />;
+            tooltipText = 'Success';
+            className = 'bg-green-500';
+            break;
+        case 'duplicate':
+            icon = <Copy className="h-3 w-3" />;
+            tooltipText = 'Duplicate file name, already processed.';
+            className = 'bg-yellow-500';
+            break;
+        case 'error':
+            icon = <AlertCircle className="h-3 w-3" />;
+            tooltipText = `Error: ${error || 'Unknown error'}`;
+            className = 'bg-red-500';
+            break;
     }
-    return imageFiles;
-};
 
+    return (
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <div className={`absolute bottom-1 right-1 z-10 h-5 w-5 rounded-full flex items-center justify-center text-white ${className}`}>
+                        {icon}
+                    </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                    <p>{tooltipText}</p>
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
+};
 
 
 export function ImageUploader({ 
@@ -67,14 +88,7 @@ export function ImageUploader({
     isLoading,
     dataByBattery,
     processedFileNames
-}: {
-    onNewDataPoint: (data: ExtractionResult) => void;
-    onMultipleDataPoints: (data: BatteryDataMap) => void;
-    setIsLoading: (isLoading: boolean) => void;
-    isLoading: boolean;
-    dataByBattery: BatteryDataMap;
-    processedFileNames: Set<string>;
-}) {
+}: ImageUploaderProps) {
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
   const [progress, setProgress] = useState(0);
   const [isPending, startTransition] = useTransition();
@@ -86,121 +100,127 @@ export function ImageUploader({
   const handleFileSelection = async (files: FileList | null) => {
     if (!files) return;
 
-    let newFiles: ImageFile[] = [];
-    const processingPromises: Promise<ImageFile[] | ImageFile>[]= [];
-
+    let newRawFiles: { file: File, name: string }[] = [];
+    let zipFile: File | null = null;
+    
     for (const file of Array.from(files)) {
-        if (file.type === 'application/zip') {
-            processingPromises.push(processZipFile(file));
-        } else {
-            const promise = readFileAsDataURL(file).then(preview => ({
-                id: `${file.name}-${file.lastModified}`,
-                preview,
-                name: file.name,
-                status: 'queued' as ImageFileStatus
-            }));
-            processingPromises.push(promise);
+      if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
+        zipFile = file;
+        break; 
+      }
+      if (file.type.startsWith('image/')) {
+        newRawFiles.push({ file, name: file.name });
+      }
+    }
+    
+    if (zipFile) {
+        try {
+            const zip = await JSZip.loadAsync(zipFile);
+            for (const relativePath in zip.files) {
+                const zipEntry = zip.files[relativePath];
+                if (!zipEntry.dir && isImageFile(zipEntry.name)) {
+                    const blob = await zipEntry.async('blob');
+                    // Force a valid image MIME type if the original is generic
+                    const imageType = blob.type === 'application/octet-stream' ? 'image/png' : blob.type;
+                    const file = new File([blob], relativePath, { type: imageType });
+                    newRawFiles.push({ file, name: relativePath });
+                }
+            }
+        } catch (error) {
+            console.error("Error unzipping file:", error);
+            toast({ title: "ZIP File Error", description: "There was an error processing the ZIP file.", variant: 'destructive' });
+            return;
         }
     }
-
-    const results = await Promise.all(processingPromises);
-    newFiles = results.flat();
-
-    const uniqueNewFiles = newFiles.filter(nf => !imageFiles.some(ef => ef.id === nf.id));
     
-    const duplicates = uniqueNewFiles.filter(f => processedFileNames.has(f.name));
+    const fileToImageFile = (file: File, name: string): Promise<ImageFile> => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                let dataUri = reader.result as string;
+                // Forcefully correct the MIME type in the data URI itself if it's wrong
+                if (dataUri.startsWith('data:application/octet-stream')) {
+                  dataUri = dataUri.replace('data:application/octet-stream', 'data:image/png');
+                }
+                const status: ImageFile['status'] = processedFileNames.has(name) ? 'duplicate' : 'queued';
+                resolve({ 
+                    id: `${name}-${new Date().getTime()}`,
+                    preview: dataUri,
+                    name: name,
+                    status: status
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+    };
 
-    if (duplicates.length > 0) {
-        setDuplicateFiles({ newFiles: uniqueNewFiles, existingNames: duplicates.map(f => f.name) });
+    const newImageFilePromises = newRawFiles.map(f => fileToImageFile(f.file, f.name));
+    const newImageFiles = await Promise.all(newImageFilePromises);
+    
+    const currentQueueNames = imageFiles.map(f => f.name);
+    const duplicatesInQueue = newImageFiles.filter(f => currentQueueNames.includes(f.name));
+
+    if (duplicatesInQueue.length > 0) {
+        // This handles files that are duplicates within the current UI queue, not the global processed list.
+        setDuplicateFiles({ newFiles: newImageFiles, existingNames: currentQueueNames });
     } else {
-        addFilesToQueue(uniqueNewFiles);
+        addFilesToQueue(newImageFiles);
     }
-  };
-
-  const addFilesToQueue = (files: ImageFile[]) => {
-    const updatedFiles = [...imageFiles, ...files].slice(0, MAX_FILES);
-    setImageFiles(updatedFiles);
+    
+    if(fileInputRef.current) fileInputRef.current.value = "";
   };
   
-  const handleProcessFiles = () => {
-    const filesToProcess = imageFiles.filter(f => f.status === 'queued');
-    if (filesToProcess.length > 0) {
-        startTransition(async () => {
-          await processFiles(filesToProcess);
-        });
+  const addFilesToQueue = (filesToAdd: ImageFile[]) => {
+      setImageFiles(prev => [...prev, ...filesToAdd]);
+  };
+
+  const handleDuplicateConfirmation = (confirm: boolean) => {
+    if (confirm && duplicateFiles) {
+        addFilesToQueue(duplicateFiles.newFiles);
+    } else if (duplicateFiles) {
+        const nonDuplicates = duplicateFiles.newFiles.filter(f => !duplicateFiles.existingNames.includes(f.name));
+        addFilesToQueue(nonDuplicates);
     }
+    setDuplicateFiles(null);
+  };
+
+
+  const handleUploadClick = () => { fileInputRef.current?.click(); };
+  const handleJsonUploadClick = () => { jsonInputRef.current?.click(); };
+
+  const handleClearImage = (id: string) => {
+    setImageFiles(files => files.filter(f => f.id !== id));
+  };
+  
+  const handleClearAll = () => {
+    setImageFiles([]);
   }
 
-  const processFiles = async (filesToProcess: ImageFile[]) => {
-    setIsLoading(true);
-    setProgress(0);
-
-    const updateFileStatus = (id: string, status: ImageFileStatus, error?: string) => {
-      setImageFiles(prev => prev.map(f => f.id === id ? { ...f, status, error } : f));
-    };
-    
-    filesToProcess.forEach(f => updateFileStatus(f.id, 'processing'));
-
-    try {
-        const imageBlobs = await Promise.all(filesToProcess.map(async (file) => {
-            const response = await fetch(file.preview);
-            return { id: file.id, name: file.name, blob: await response.blob() };
-        }));
-
-        const result = await extractDataWithFunctionCallingFromImageBatch(imageBlobs);
-        
-        if (result.success) {
-            result.extractions.forEach((extraction, index) => {
-                if (extraction.success && extraction.data) {
-                    onNewDataPoint(extraction.data);
-                    updateFileStatus(extraction.imageId, 'success');
-                } else {
-                    updateFileStatus(extraction.imageId, 'error', extraction.error);
-                }
-                // This progress update can be a bit jumpy, but it's better than nothing.
-                setProgress(prev => prev + (100 / filesToProcess.length));
-            });
-        } else {
-            toast({ title: 'Batch Processing Error', description: result.error, variant: 'destructive' });
-            filesToProcess.forEach(f => updateFileStatus(f.id, 'error', result.error));
+  const handleResubmitFailed = () => {
+    setImageFiles(prev => prev.map(f => {
+        if (f.status === 'error') {
+            const newStatus: ImageFile['status'] = processedFileNames.has(f.name) ? 'duplicate' : 'queued';
+            return { ...f, status: newStatus, error: undefined };
         }
-    } catch (e: any) {
-        toast({ title: 'Image Processing Failed', description: e.message || 'An unexpected error occurred.', variant: 'destructive' });
-        filesToProcess.forEach(f => updateFileStatus(f.id, 'error', e.message));
-        console.error("Upload failed", e);
-    } finally {
-        setIsLoading(false);
-        setProgress(100);
-    }
-  };
-  
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
+        return f;
+    }));
+    toast({ title: "Re-submitted", description: "Failed uploads have been re-queued for processing." });
   };
 
-  const handleJsonUploadClick = () => {
-    jsonInputRef.current?.click();
-  };
-  
-  const handleClear = () => {
-    setImageFiles([]);
-    setProgress(0);
-  };
 
-  const handleDownload = () => {
+  const handleDownloadData = () => {
     if (Object.keys(dataByBattery).length === 0) {
-        toast({ title: "No Data", description: "There is no data to download.", variant: "destructive" });
-        return;
+      toast({ title: "No Data to Download", description: "Upload and process some images first.", variant: "destructive" });
+      return;
     }
+    
+    // Create a deep copy to avoid modifying the original state
+    const dataToExport = JSON.parse(JSON.stringify(dataByBattery));
 
-    const dataToExport = { ...dataByBattery };
+    // Attach the master list of processed filenames to each battery object for future imports
+    const allFileNames = Array.from(processedFileNames);
     Object.keys(dataToExport).forEach(batteryId => {
-        if (dataToExport[batteryId].history) {
-            dataToExport[batteryId].history = dataToExport[batteryId].history.slice(-500); // Limit history to last 500 points
-        }
-        if (dataToExport[batteryId].rawExtractions) {
-            dataToExport[batteryId].rawExtractions = dataToExport[batteryId].rawExtractions.slice(-100); // Limit raw extractions
-        }
+        dataToExport[batteryId].processedFileNames = allFileNames;
     });
 
     const dataStr = JSON.stringify(dataToExport, null, 2);
@@ -223,140 +243,267 @@ export function ImageUploader({
 
     const reader = new FileReader();
     reader.onload = (e) => {
-        try {
-            const text = e.target?.result;
-            if (typeof text !== 'string') {
-                throw new Error("File is not a valid text file.");
-            }
-            const data = JSON.parse(text) as BatteryDataMap;
-            
-            // Basic validation
-            if (typeof data !== 'object' || data === null) throw new Error("Invalid JSON structure");
-
-            onMultipleDataPoints(data);
-            
-            toast({ title: "JSON Data Loaded", description: `Successfully imported data for ${Object.keys(data).length} batteries.` });
-        } catch (error: any) {
-            toast({ title: "JSON Read Error", description: error.message, variant: "destructive" });
-        }
+      try {
+        const text = e.target?.result;
+        if (typeof text !== 'string') { throw new Error("File could not be read."); }
+        const parsedData = JSON.parse(text);
+        if (typeof parsedData !== 'object' || parsedData === null) { throw new Error("Invalid JSON format."); }
+        onMultipleDataPoints(parsedData);
+        toast({ title: "Data Imported Successfully", description: "The data from your JSON file has been loaded." });
+      } catch (error: any) {
+        toast({ title: "Failed to Import Data", description: `Error reading JSON file: ${error.message}`, variant: "destructive", });
+      }
     };
-    reader.onerror = () => {
-        toast({ title: "File Read Error", description: "Could not read the selected file.", variant: "destructive" });
-    }
     reader.readAsText(file);
-
-    // Reset file input
-    event.target.value = '';
+    if (jsonInputRef.current) jsonInputRef.current.value = "";
   };
-  
-  const queuedFilesCount = imageFiles.filter(f => f.status === 'queued').length;
+
+
+  const handleSubmit = () => {
+    const filesToProcess = imageFiles.filter(f => f.status === 'queued');
+    if (filesToProcess.length === 0) {
+        toast({ title: 'No New Images to Process', description: 'Please select images or re-submit failed ones.', variant: 'destructive' });
+        return;
+    }
+
+    setIsLoading(true);
+    setProgress(0);
+
+    startTransition(async () => {
+        const totalFiles = filesToProcess.length;
+        let processedCount = 0;
+        let successfulExtractions = 0;
+        let failedExtractions = 0;
+
+        // Adaptive concurrency settings
+        let concurrency = 5; // Start with 5 concurrent requests
+        const maxConcurrency = 15;
+        const minConcurrency = 2;
+
+        const updateFileStatus = (id: string, status: ImageFile['status'], data?: { error?: string, verifiedMetrics?: { [key: string]: boolean } }) => {
+            setImageFiles(prev => prev.map(f => f.id === id ? { ...f, status, ...data } : f));
+        };
+
+        const processQueue = async () => {
+            const queue = [...filesToProcess];
+            let activePromises = 0;
+
+            return new Promise<void>((resolve, reject) => {
+                const executeNext = async () => {
+                    if (queue.length === 0 && activePromises === 0) {
+                        resolve();
+                        return;
+                    }
+                    while (activePromises < concurrency && queue.length > 0) {
+                        const file = queue.shift();
+                        if (!file) continue;
+
+                        activePromises++;
+                        
+                        updateFileStatus(file.id, 'processing');
+                        console.log(`[ImageUploader] Processing image: ${file.name}. Concurrency: ${concurrency}`);
+
+                        processImage(file.preview, file.name)
+                            .then(result => {
+                                if (result.success && result.data) {
+                                    onNewDataPoint(result.data);
+                                    successfulExtractions++;
+                                    
+                                    const verifiedMetrics: { [key: string]: boolean } = {};
+                                    try {
+                                        const parsedData = JSON.parse(result.data.extractedData);
+                                        const extractedKeys = Object.keys(parsedData).map(k => k.toLowerCase());
+                                        coreMetrics.forEach(coreMetric => {
+                                            verifiedMetrics[coreMetric] = extractedKeys.some(ek => ek.includes(coreMetric));
+                                        });
+                                    } catch {
+                                        coreMetrics.forEach(coreMetric => { verifiedMetrics[coreMetric] = false; });
+                                    }
+                                    updateFileStatus(file.id, 'success', { verifiedMetrics });
+                                    
+                                    // Increase concurrency on success
+                                    concurrency = Math.min(maxConcurrency, concurrency + 1);
+
+                                } else {
+                                    failedExtractions++;
+                                    updateFileStatus(file.id, 'error', { error: result.error });
+
+                                    // Decrease concurrency on failure
+                                    concurrency = Math.max(minConcurrency, Math.floor(concurrency / 2));
+                                }
+                            })
+                            .catch(e => {
+                                failedExtractions++;
+                                updateFileStatus(file.id, 'error', { error: e.message });
+                                
+                                // Decrease concurrency on critical failure
+                                concurrency = Math.max(minConcurrency, Math.floor(concurrency / 2));
+                            })
+                            .finally(() => {
+                                activePromises--;
+                                processedCount++;
+                                setProgress((processedCount / totalFiles) * 100);
+                                executeNext();
+                            });
+                    }
+                };
+                // Start the initial executions
+                for(let i=0; i<concurrency; i++){
+                    executeNext();
+                }
+            });
+        };
+
+        await processQueue();
+        
+        toast({
+            title: 'Data Extraction Complete',
+            description: `${successfulExtractions} out of ${totalFiles} images processed. ${failedExtractions > 0 ? `${failedExtractions} failed.` : ''}`,
+            variant: failedExtractions > 0 ? 'destructive' : 'default',
+        });
+        
+        setIsLoading(false);
+    });
+};
+
+
+  const hasFailedUploads = imageFiles.some(f => f.status === 'error');
+  const hasProcessedFiles = imageFiles.some(f => f.status !== 'queued');
 
   return (
     <>
-        <Card className="w-full max-w-2xl mx-auto">
-            <CardHeader>
-                <CardTitle>Data Uploader</CardTitle>
-                <CardDescription>Upload images, ZIP archives, or JSON data files. Your data is processed locally.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Tabs defaultValue="images">
-                    <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="images">Images & ZIPs</TabsTrigger>
-                        <TabsTrigger value="data">Data Import/Export</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="images">
-                        <div className="mt-4 space-y-4">
-                            <div className="w-full p-6 border-2 border-dashed rounded-lg text-center cursor-pointer hover:bg-muted/50" onClick={handleUploadClick}>
-                                <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                                <p className="mt-2 text-sm text-muted-foreground">Click to upload or drag and drop</p>
-                                <p className="text-xs text-muted-foreground">PNG, JPG, WEBP, or ZIP (max {MAX_FILES} files, {MAX_SIZE_MB}MB each)</p>
-                            </div>
-                            {imageFiles.length > 0 && (
-                                <div className="space-y-2">
-                                    <AnimatePresence>
-                                        {imageFiles.map(file => (
-                                            <motion.div
-                                                key={file.id}
-                                                layout
-                                                initial={{ opacity: 0, y: -10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                exit={{ opacity: 0, x: -20 }}
-                                                className="flex items-center space-x-3 p-2 bg-muted/50 rounded-lg"
-                                            >
-                                                <img src={file.preview} alt={file.name} className="h-10 w-10 rounded-md object-cover" />
-                                                <div className="flex-1">
-                                                    <p className="text-sm font-medium truncate">{file.name}</p>
-                                                    {file.status === 'error' && <p className="text-xs text-red-500">{file.error}</p>}
-                                                </div>
-                                                {fileStatusIcons[file.status]}
-                                            </motion.div>
-                                        ))}
-                                    </AnimatePresence>
-                                    {isLoading && <Progress value={progress} className="w-full h-2 mt-2" />}
-                                </div>
-                            )}
-                            {(imageFiles.length > 0 || isLoading) && (
-                                <div className="flex justify-end space-x-2">
-                                    <Button onClick={handleClear} variant="ghost" disabled={isLoading}>Clear</Button>
-                                    {queuedFilesCount > 0 && 
-                                        <Button onClick={handleProcessFiles} disabled={isLoading || isPending}>
-                                            {isPending ? 'Starting...' : `Upload ${queuedFilesCount} File(s)`}
-                                        </Button>
-                                    }
-                                </div>
-                            )}
-                        </div>
-                    </TabsContent>
-                    <TabsContent value="data">
-                         <div className="mt-4 space-y-4 text-center">
-                             <FileText className="mx-auto h-12 w-12 text-gray-400" />
-                            <p className="text-sm text-muted-foreground">Import data from a previous session or export your current data.</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
-                                <Button onClick={handleJsonUploadClick} variant="default" className="w-full" disabled={isLoading || isPending}>
-                                  <UploadCloud className="mr-2 h-4 w-4" />
-                                  Import from JSON
-                                </Button>
-                                <Button onClick={handleDownload} variant="secondary" className="w-full" disabled={isLoading || isPending || Object.keys(dataByBattery).length === 0}>
-                                  <Download className="mr-2 h-4 w-4" />
-                                  Export to JSON
-                                </Button>
-                            </div>
-                        </div>
-                    </TabsContent>
-                </Tabs>
-
-
-            </CardContent>
-        </Card>
-
+    <Card>
+      <CardHeader>
+        <CardTitle>1. Upload Data</CardTitle>
+        <CardDescription>Upload images/ZIP to extract data, or upload a previously saved JSON data file.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="relative w-full border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/50 overflow-hidden p-2 min-h-[150px]">
+          {imageFiles.length > 0 ? (
+             <div className="grid grid-cols-3 md:grid-cols-5 gap-2 w-full">
+                {imageFiles.map((file) => (
+                    <div key={file.id} className="relative aspect-square">
+                        <Image
+                            src={file.preview}
+                            alt={`Image preview ${file.name}`}
+                            fill
+                            className="object-contain rounded-md"
+                        />
+                        <Button
+                            variant="destructive"
+                            size="icon"
+                            className="absolute top-1 right-1 z-10 h-6 w-6"
+                            onClick={() => handleClearImage(file.id)}
+                            disabled={isLoading}
+                        >
+                            <X className="h-3 w-3" />
+                            <span className="sr-only">Clear image</span>
+                        </Button>
+                        <StatusIcon status={file.status} error={file.error} />
+                    </div>
+                ))}
+             </div>
+          ) : (
+            <div className="text-center text-muted-foreground p-4">
+              <UploadCloud className="mx-auto h-12 w-12" />
+              <p className="mt-2 text-sm">Choose images, a ZIP file, or upload a JSON file</p>
+            </div>
+          )}
+        </div>
         <input type="file" ref={fileInputRef} onChange={(e) => handleFileSelection(e.target.files)} className="hidden" accept="image/png, image/jpeg, image/webp, application/zip" multiple />
         <input type="file" ref={jsonInputRef} onChange={handleJsonFileChange} className="hidden" accept="application/json" />
-
-        <AlertDialog open={!!duplicateFiles} onOpenChange={(open) => !open && setDuplicateFiles(null)}>
+        
+        <div className="grid grid-cols-2 gap-2">
+            <Button onClick={handleUploadClick} variant="outline" className="w-full" disabled={isLoading || isPending}>
+              <Upload className="mr-2 h-4 w-4" />
+              Images / ZIP
+            </Button>
+            <Button onClick={handleJsonUploadClick} variant="outline" className="w-full" disabled={isLoading || isPending}>
+              <UploadCloud className="mr-2 h-4 w-4" />
+              Upload JSON
+            </Button>
+        </div>
+         <Button onClick={handleSubmit} disabled={isLoading || isPending || imageFiles.filter(f => f.status === 'queued').length === 0} className="w-full">
+              {isLoading || isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {isLoading || isPending ? `Extracting...` : `Extract Data from ${imageFiles.filter(f => f.status === 'queued').length} New Images`}
+        </Button>
+        {(isLoading || isPending) && (
+            <div className="space-y-2">
+                <Progress value={progress} />
+                <p className="text-sm text-muted-foreground text-center">Processing... {Math.round(progress)}%</p>
+            </div>
+        )}
+        <div className="flex flex-col sm:flex-row gap-2">
+            <Button onClick={handleDownloadData} variant="secondary" className="w-full" disabled={isLoading || isPending || Object.keys(dataByBattery).length === 0}>
+                <Download className="mr-2 h-4 w-4" /> Download Data as JSON
+            </Button>
+            {hasFailedUploads && (
+                <Button onClick={handleResubmitFailed} variant="outline" className="w-full" disabled={isLoading || isPending}>
+                    <RefreshCw className="mr-2 h-4 w-4" /> Re-submit Failed
+                </Button>
+            )}
+            <Button onClick={handleClearAll} variant="ghost" disabled={isLoading || isPending || imageFiles.length === 0}>
+                <Trash2 className="mr-2 h-4 w-4" /> Clear All
+            </Button>
+        </div>
+        {hasProcessedFiles && (
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="verification">
+              <AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5" />
+                  <span className="font-semibold">Verification Details</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <ScrollArea className="h-64 w-full">
+                  <div className="p-1 space-y-2">
+                    {imageFiles.filter(f => f.status !== 'queued' && f.status !== 'processing').map(file => (
+                      <div key={file.id} className="text-sm p-2 rounded-md bg-muted/50">
+                        <p className="font-semibold truncate" title={file.name}>{file.name}</p>
+                        {file.status === 'success' ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+                            {coreMetrics.map(metric => (
+                              <div key={metric} className="flex items-center gap-1">
+                                {file.verifiedMetrics?.[metric] ? 
+                                  <Check className="h-4 w-4 text-green-600" /> : 
+                                  <X className="h-4 w-4 text-red-600" />
+                                }
+                                <span className="capitalize">{metric}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : file.status === 'duplicate' ? (
+                            <p className="text-yellow-600 mt-1">Skipped: Duplicate file.</p>
+                        ) : (
+                          <p className="text-red-600 mt-1">Failed: {file.error}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
+      </CardContent>
+    </Card>
+    {duplicateFiles && (
+        <AlertDialog open={!!duplicateFiles} onOpenChange={() => setDuplicateFiles(null)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>Duplicate Files Detected</AlertDialogTitle>
                     <AlertDialogDescription>
-                        You have selected {duplicateFiles?.newFiles.length} file(s), but {duplicateFiles?.existingNames.length} of them appear to have been processed already:
-                         <ul className="list-disc list-inside mt-2 text-sm text-muted-foreground bg-muted/30 p-2 rounded-md">
-                            {duplicateFiles?.existingNames.map(name => <li key={name}>{name}</li>)}
-                        </ul>
-                        Do you want to re-process them anyway? 
+                        You have selected files that are already in the upload queue. Do you want to add these duplicates anyway?
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel onClick={() => {
-                        const nonDuplicates = duplicateFiles?.newFiles.filter(f => !duplicateFiles.existingNames.includes(f.name));
-                        if (nonDuplicates && nonDuplicates.length > 0) addFilesToQueue(nonDuplicates);
-                        setDuplicateFiles(null);
-                    }}>Skip Duplicates</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => {
-                        if (duplicateFiles) addFilesToQueue(duplicateFiles.newFiles);
-                        setDuplicateFiles(null);
-                    }}>Process All</AlertDialogAction>
+                    <AlertDialogCancel onClick={() => handleDuplicateConfirmation(false)}>Ignore Duplicates</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleDuplicateConfirmation(true)}>Add Anyway</AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+    )}
     </>
   );
 }
